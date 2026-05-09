@@ -1,0 +1,26 @@
+schema_version = "1.0.0"
+
+id = "blender_agent"
+version = "0.1.0"
+name = "Blender Agent"
+tagline = "Control Blender from a local AI chat workspace"
+maintainer = "frs0n"
+type = "add-on"
+website = "https://github.com/frs0n/blender-agent"
+tags = ["3D View", "User Interface", "Pipeline"]
+blender_version_min = "5.1.0"
+license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2026 frs0n", "2026 Blender Authors"]
+platforms = ["linux-x64", "macos-arm64", "macos-x64", "windows-x64"]
+
+[permissions]
+network = "Connect to model APIs and local UI"
+files = "Write screenshots and previews"
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "*.pyc",
+  "*.zip",
+  ".DS_Store",
+]

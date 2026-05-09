@@ -1,0 +1,46 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Blender
+*.blend
+*.blend1
+*.blend2
+*.blend@
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.zip
+third_party/
+
+# Local tooling artifacts
+node_modules/
+.next/
+out/
+.cache/
+.tmp/
+*.log
+patch_cache.py
+patch_dynamic_html.py
+patch_layout.py
+webui_patch.py
+revert_dynamic.py
+reload_instructions.txt

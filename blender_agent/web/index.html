@@ -1,0 +1,704 @@
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blender Agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            muted: 'hsl(var(--muted))',
+            'muted-foreground': 'hsl(var(--muted-foreground))',
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            primary: 'hsl(var(--primary))',
+            'primary-foreground': 'hsl(var(--primary-foreground))',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 240 10% 3.9%;
+      --muted: 240 4.8% 95.9%;
+      --muted-foreground: 240 3.8% 46.1%;
+      --border: 240 5.9% 90%;
+      --input: 240 5.9% 90%;
+      --primary: 240 5.9% 10%;
+      --primary-foreground: 0 0% 98%;
+      --radius: 0.5rem;
+    }
+    .dark {
+      --background: 240 10% 3.9%;
+      --foreground: 0 0% 98%;
+      --muted: 240 3.7% 15.9%;
+      --muted-foreground: 240 5% 64.9%;
+      --border: 240 3.7% 15.9%;
+      --input: 240 3.7% 15.9%;
+      --primary: 0 0% 98%;
+      --primary-foreground: 240 5.9% 10%;
+    }
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .app-layout { display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 260px; border-right: 1px solid hsl(var(--border)); background: hsl(var(--background)); display: flex; flex-direction: column; transition: all 0.2s ease; z-index: 40; position: relative; flex-shrink: 0; }
+    .sidebar.closed { width: 0; border-right: none; overflow: hidden; }
+    .sidebar.closed > * { visibility: hidden; opacity: 0; transition: opacity 0.1s; }
+    @media (max-width: 768px) {
+      .sidebar { position: absolute; top: 0; bottom: 0; left: 0; }
+      .sidebar:not(.closed) { width: 260px; border-right: 1px solid hsl(var(--border)); }
+      .sidebar.closed { transform: translateX(-100%); width: 260px; visibility: visible; }
+      .sidebar.closed > * { visibility: visible; opacity: 1; }
+    }
+    .main-content { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 0; background: hsl(var(--background)); transition: margin-left 0.2s ease; }
+    .chat-scroll { flex: 1; overflow-y: auto; padding-bottom: 120px; }
+    .chat-container { max-width: 48rem; margin: 0 auto; padding: 2rem 1rem; display: flex; flex-direction: column; gap: 1.5rem; }
+    .message { display: flex; flex-direction: column; gap: 0.5rem; }
+    .message-user { align-items: flex-end; }
+    .message-assistant { align-items: flex-start; }
+    .bubble { max-width: 85%; padding: 0.75rem 1rem; border-radius: var(--radius); line-height: 1.5; font-size: 0.95rem; white-space: pre-wrap; }
+    .bubble-user { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-bottom-right-radius: 0.25rem; }
+    .bubble-assistant { background: transparent; color: hsl(var(--foreground)); padding: 0; font-size: 1rem; }
+    .assistant-thinking { display: inline-flex; align-items: center; margin-top: 0.5rem; color: hsl(var(--muted-foreground)); }
+    .thinking-dots { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .thinking-dots span { width: 0.375rem; height: 0.375rem; border-radius: 999px; background: currentColor; animation: pulseDots 1.2s infinite ease-in-out; }
+    .thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes pulseDots {
+      0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-1px); }
+    }
+    .input-wrapper { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, hsl(var(--background)) 50%, transparent); padding: 1rem; display: flex; justify-content: center; }
+    .input-box { width: 100%; max-width: 48rem; position: relative; display: flex; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 1.5rem; background: hsl(var(--background)); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    .input-box textarea { width: 100%; background: transparent; border: none; padding: 1rem 4.25rem 1rem 1.5rem; outline: none; resize: none; color: hsl(var(--foreground)); min-height: 56px; max-height: 200px; font-size: 0.95rem; }
+    .input-actions { position: absolute; right: 0.5rem; bottom: 0.5rem; display: flex; align-items: center; }
+    .icon-btn { width: 2rem; height: 2rem; border-radius: 999px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: opacity 0.2s ease, background 0.2s ease; }
+    .icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .primary-action { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+    .primary-action:hover:not(:disabled) { opacity: 0.92; }
+    .btn-ghost { padding: 0.5rem; border-radius: var(--radius); cursor: pointer; transition: background 0.2s; }
+    .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ghost:hover { background: hsl(var(--muted)); }
+    .session-item { padding: 0.75rem; border-radius: var(--radius); cursor: pointer; color: hsl(var(--muted-foreground)); transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+    .session-item:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+    .session-item.active { background: hsl(var(--muted)); color: hsl(var(--foreground)); font-weight: 500; }
+    .topbar { height: 3.5rem; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; border-bottom: 1px solid hsl(var(--border)); }
+    .operations-sidebar { width: 340px; border-left: 1px solid hsl(var(--border)); background: hsl(var(--background)); display: flex; flex-direction: column; transition: all 0.2s ease; overflow: hidden; flex-shrink: 0; }
+    .operations-sidebar.closed { width: 0; border-left: none; opacity: 0; pointer-events: none; }
+
+    .tool-timeline { display: flex; flex-direction: column; width: 100%; margin-top: 0.25rem; }
+    .tool-step { display: flex; align-items: flex-start; position: relative; }
+    .tool-step-track { display: flex; flex-direction: column; align-items: center; width: 24px; flex-shrink: 0; }
+    .tool-step-dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--muted-foreground)); flex-shrink: 0; margin-top: 6px; position: relative; z-index: 1; }
+    .tool-step-dot.running { background: hsl(217 91% 60%); box-shadow: 0 0 0 3px hsla(217 91% 60% / 0.2); }
+    .tool-step-dot.paused { background: hsl(45 93% 47%); box-shadow: 0 0 0 3px hsla(45 93% 47% / 0.2); }
+    .tool-step-dot.done { background: hsl(142 71% 45%); }
+    .tool-step-dot.error { background: hsl(0 84% 60%); }
+    .tool-step-line { width: 1.5px; flex: 1; background: hsl(var(--border)); min-height: 8px; }
+    .tool-step-line:last-child { display: none; }
+    .tool-step-body { flex: 1; min-width: 0; padding-bottom: 12px; }
+    .tool-step-header { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 2px 0; user-select: none; }
+    .tool-step-header:hover .tool-step-name { color: hsl(var(--foreground)); }
+    .tool-step-chevron { width: 14px; height: 14px; color: hsl(var(--muted-foreground)); transition: transform 0.15s ease; flex-shrink: 0; }
+    .tool-step-chevron.open { transform: rotate(90deg); }
+    .tool-step-name { font-size: 0.8125rem; font-weight: 500; color: hsl(var(--muted-foreground)); transition: color 0.15s; }
+    .tool-step-status { font-size: 0.6875rem; color: hsl(var(--muted-foreground)); opacity: 0.7; }
+    .tool-step-detail { display: none; margin-top: 6px; margin-left: 22px; padding: 10px 12px; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); border-radius: var(--radius); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem; line-height: 1.5; color: hsl(var(--muted-foreground)); white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+    .tool-step-detail.open { display: block; }
+    .tool-step-detail img { margin-top: 8px; border-radius: var(--radius); border: 1px solid hsl(var(--border)); max-width: 100%; max-height: 240px; object-fit: contain; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .tool-spinner { width: 14px; height: 14px; border: 1.5px solid hsl(var(--border)); border-top-color: hsl(var(--foreground)); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 3px; }
+  </style>
+</head>
+<body class="bg-background text-foreground">
+  <div class="app-layout">
+    <aside id="sidebar" class="sidebar">
+      <div class="p-4 flex justify-between items-center border-b border-border">
+        <span class="font-semibold text-sm">Blender Agent</span>
+        <button id="newSession" class="btn-ghost" title="New Chat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div id="sessions" class="flex-1 overflow-y-auto p-2 flex flex-col gap-1"></div>
+      <div class="p-4 border-t border-border flex flex-col gap-2">
+        <button id="openSettings" class="text-sm text-muted-foreground hover:text-foreground text-left px-2 py-1">Settings</button>
+        <button id="clearSession" class="text-sm text-red-500 hover:text-red-600 text-left px-2 py-1">Clear History</button>
+      </div>
+    </aside>
+    <main class="main-content">
+      <div class="topbar">
+        <div class="flex items-center gap-2">
+          <button id="toggleSidebar" class="btn-ghost">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          </button>
+          <span id="activeTitle" class="text-sm font-medium">New Chat</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="toggleOperations" class="btn-ghost" title="AI Operations">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+          </button>
+        </div>
+      </div>
+      <div id="chatScroll" class="chat-scroll">
+        <div id="chat" class="chat-container"></div>
+      </div>
+      <div class="input-wrapper">
+        <form id="form" class="input-box">
+          <textarea id="prompt" rows="1" placeholder="Send a message..."></textarea>
+          <div class="input-actions">
+            <button id="primaryAction" class="icon-btn primary-action" type="button" title="Send Message">
+              <svg id="primaryActionSendIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <svg id="primaryActionPauseIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+              <svg id="primaryActionSpinnerIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none; animation: spin 0.7s linear infinite;"><circle cx="12" cy="12" r="8" stroke-opacity="0.25"></circle><path d="M20 12a8 8 0 0 0-8-8"></path></svg>
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+    <aside id="operationsSidebar" class="operations-sidebar closed">
+      <div class="p-4 flex justify-between items-center border-b border-border">
+        <span class="font-semibold text-sm">AI Operations</span>
+        <button id="closeOperations" class="btn-ghost" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="operationsList" class="flex-1 overflow-y-auto p-4"></div>
+    </aside>
+  </div>
+  <div id="settingsModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50">
+    <div class="bg-background border border-border p-6 rounded-lg w-96 max-w-[90vw]">
+      <h2 class="text-lg font-semibold mb-4">Settings</h2>
+      <div class="flex flex-col gap-3">
+        <div><label class="text-xs text-muted-foreground uppercase">Base URL</label><input id="baseUrl" class="w-full bg-transparent border border-border rounded p-2 text-sm mt-1 focus:border-primary outline-none" placeholder="https://api.openai.com/v1" /></div>
+        <div><label class="text-xs text-muted-foreground uppercase">API Key</label><input id="apiKey" type="password" class="w-full bg-transparent border border-border rounded p-2 text-sm mt-1 focus:border-primary outline-none" placeholder="sk-..." /></div>
+        <div><label class="text-xs text-muted-foreground uppercase">Model</label><input id="model" class="w-full bg-transparent border border-border rounded p-2 text-sm mt-1 focus:border-primary outline-none" placeholder="gpt-4o" /></div>
+        <div><label class="text-xs text-muted-foreground uppercase">Max Tool Rounds</label><input id="maxToolRounds" type="number" class="w-full bg-transparent border border-border rounded p-2 text-sm mt-1 focus:border-primary outline-none" placeholder="8" value="8" /></div>
+      </div>
+      <div class="flex justify-between mt-6">
+        <button id="clearLocalChatData" class="text-sm text-red-500 hover:text-red-600">Clear Data</button>
+        <button id="closeSettings" class="px-4 py-2 bg-primary text-primary-foreground rounded text-sm font-medium">Done</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const token = "__TOKEN__";
+    const storeKey = "blender-agent.sessions.v3";
+    const settingsKeys = ["baseUrl", "apiKey", "model", "maxToolRounds"];
+    function safeParseJson(text, fallback, label) {
+      if (!text) return fallback;
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        console.warn("Failed to parse " + (label || "JSON") + ", resetting state", err);
+        return fallback;
+      }
+    }
+    const state = {
+      sessions: safeParseJson(localStorage.getItem(storeKey), [], "saved sessions"),
+      activeId: localStorage.getItem("blender-agent.activeSession") || null,
+      currentRun: null,
+      isStreaming: false,
+      pausePending: false,
+      streamReader: null,
+      activeAssistantMessage: null
+    };
+    var saveTimer = null;
+    function uid() { return "s_" + Math.random().toString(36).slice(2) + Date.now().toString(36); }
+    function cleanToolCall(tc) {
+      return {
+        name: tc.name || "tool",
+        status: tc.status || "done",
+        detail: tc.detail,
+        duration: tc.duration
+      };
+    }
+    function cleanMessage(message) {
+      var clean = { role: message.role, content: message.content };
+      if (message.role === "assistant" && Array.isArray(message.toolCalls) && message.toolCalls.length) {
+        clean.toolCalls = message.toolCalls.map(cleanToolCall);
+      }
+      if (clean.role === "assistant" && !clean.content && !clean.toolCalls) return null;
+      return clean;
+    }
+    function cleanRun(run) {
+      return {
+        id: run.id,
+        session_id: run.session_id,
+        status: run.status,
+        error: run.error,
+        started_at: run.started_at,
+        updated_at: run.updated_at,
+        ended_at: run.ended_at
+      };
+    }
+    function persistedSessions() {
+      return state.sessions.map(s => ({
+        id: s.id,
+        title: s.title,
+        messages: (s.messages || []).map(cleanMessage).filter(Boolean),
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        runs: (s.runs || []).slice(0, 5).map(cleanRun)
+      }));
+    }
+    function flushSave() {
+      try {
+        localStorage.setItem(storeKey, JSON.stringify(persistedSessions()));
+        localStorage.setItem("blender-agent.activeSession", state.activeId || "");
+      } catch (err) { console.warn("Unable to persist", err); }
+    }
+    function save() {
+      if (saveTimer) return;
+      saveTimer = window.setTimeout(function() {
+        saveTimer = null;
+        flushSave();
+      }, 150);
+    }
+    function session(allowCreate) {
+      if (allowCreate === undefined) allowCreate = true;
+      if (!state.sessions.length) {
+        if (allowCreate) newSession();
+        return state.sessions[0] || null;
+      }
+      var s = state.sessions.find(function(x) { return x.id === state.activeId; });
+      if (!s) { state.activeId = state.sessions[0].id; s = state.sessions[0]; }
+      return s;
+    }
+    function newSession() {
+      var s = { id: uid(), title: "New Chat", messages: [], createdAt: Date.now(), updatedAt: Date.now(), runs: [] };
+      state.sessions.unshift(s); state.activeId = s.id; save(); render();
+    }
+    for (var ki = 0; ki < settingsKeys.length; ki++) {
+      (function(id) {
+        var el = document.getElementById(id);
+        el.value = localStorage.getItem("blender-agent." + id) || (id === "maxToolRounds" ? "8" : "");
+        el.addEventListener("input", function(e) { localStorage.setItem("blender-agent." + id, e.target.value); });
+      })(settingsKeys[ki]);
+    }
+    document.getElementById("openSettings").onclick = function() { document.getElementById("settingsModal").classList.remove("hidden"); };
+    document.getElementById("closeSettings").onclick = function() { document.getElementById("settingsModal").classList.add("hidden"); };
+    document.getElementById("clearLocalChatData").onclick = function() {
+      if (!confirm("Clear all local chat history?")) return;
+      localStorage.removeItem(storeKey); localStorage.removeItem("blender-agent.activeSession");
+      state.sessions = []; state.activeId = null; state.currentRun = null;
+      render(); document.getElementById("settingsModal").classList.add("hidden");
+    };
+    document.getElementById("toggleSidebar").onclick = function() { document.getElementById("sidebar").classList.toggle("closed"); };
+    
+    // Auto-hide sidebar on small screens
+    if (window.innerWidth <= 768) {
+      document.getElementById("sidebar").classList.add("closed");
+    }
+    window.addEventListener("resize", function() {
+      if (window.innerWidth <= 768) {
+        document.getElementById("sidebar").classList.add("closed");
+      }
+    });
+    window.addEventListener("beforeunload", function() {
+      if (saveTimer) {
+        window.clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      flushSave();
+    });
+
+    function escapeHtml(t) { var d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+    function isImageTool(name) {
+      return name === "get_viewport_screenshot" ||
+        name === "render_scene_image" ||
+        name === "get_screenshot_of_window_as_image" ||
+        name === "get_screenshot_of_area_as_image";
+    }
+
+    function renderSessions() {
+      var box = document.getElementById("sessions"); box.innerHTML = "";
+      for (var i = 0; i < state.sessions.length; i++) {
+        var s = state.sessions[i];
+        var btn = document.createElement("button");
+        btn.className = "session-item" + (s.id === state.activeId ? " active" : "");
+        btn.textContent = s.title || "New Chat";
+        (function(ss) { btn.onclick = function() { state.activeId = ss.id; state.currentRun = ss.runs[0] || null; save(); render(); }; })(s);
+        box.appendChild(btn);
+      }
+    }
+
+    function renderChat() {
+      var s = session(false);
+      document.getElementById("activeTitle").textContent = s ? (s.title || "New Chat") : "New Chat";
+      var chat = document.getElementById("chat"); chat.innerHTML = "";
+      if (!s || s.messages.length === 0) {
+        chat.innerHTML = '<div class="flex flex-col items-center justify-center text-center mt-20 text-muted-foreground">' +
+          '<div class="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mb-4">' +
+          '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"/></svg></div>' +
+          '<h2 class="text-xl font-semibold text-foreground">How can I help you today?</h2></div>';
+        return;
+      }
+      for (var mi = 0; mi < s.messages.length; mi++) {
+        var m = s.messages[mi];
+        var el = document.createElement("div");
+        el.className = "message " + (m.role === "user" ? "message-user" : "message-assistant");
+        if (m.role === "user") {
+          el.innerHTML = '<div class="bubble bubble-user">' + escapeHtml(m.content) + '</div>';
+        } else {
+          var html = "";
+          if (m.content) {
+            html += '<div class="bubble bubble-assistant">' + escapeHtml(m.content) + '</div>';
+          }
+          if (m._retrying) {
+            html += '<div class="assistant-thinking">Retrying...</div>';
+          } else if (m._streaming) {
+            html += '<div class="assistant-thinking"><span class="thinking-dots"><span></span><span></span><span></span></span></div>';
+          } else if (m._paused) {
+            html += '<div class="assistant-thinking">Paused</div>';
+          }
+          el.innerHTML = html;
+        }
+        chat.appendChild(el);
+      }
+      var scroll = document.getElementById("chatScroll");
+      scroll.scrollTop = scroll.scrollHeight;
+    }
+
+    function renderOperations() {
+      var s = session(false);
+      var list = document.getElementById("operationsList"); list.innerHTML = "";
+      if (!s) return;
+      var allToolCalls = [];
+      for (var mi = 0; mi < s.messages.length; mi++) {
+        var m = s.messages[mi];
+        if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+          allToolCalls = allToolCalls.concat(m.toolCalls);
+        }
+      }
+      if (allToolCalls.length === 0) {
+        list.innerHTML = '<div class="text-sm text-muted-foreground text-center mt-10">No operations yet.</div>';
+        return;
+      }
+      var html = '<div class="tool-timeline">';
+      for (var ti = 0; ti < allToolCalls.length; ti++) {
+        var tc = allToolCalls[ti];
+        if (!tc._id) tc._id = uid();
+        var isLast = ti === allToolCalls.length - 1;
+        var isOpen = tc._open;
+        var dotClass = tc.status === "running" ? "running" : tc.status === "paused" ? "paused" : tc.status === "error" ? "error" : "done";
+        var statusText = tc.status === "running" ? "running..." : tc.status === "paused" ? "paused" : tc.status === "error" ? "error" : (tc.duration ? tc.duration + "s" : "");
+        html += '<div class="tool-step">';
+        html += '<div class="tool-step-track">';
+        if (tc.status === "running") {
+          html += '<div class="tool-spinner"></div>';
+        } else {
+          html += '<div class="tool-step-dot ' + dotClass + '"></div>';
+        }
+        if (!isLast) html += '<div class="tool-step-line"></div>';
+        html += '</div>';
+        html += '<div class="tool-step-body">';
+        html += '<div class="tool-step-header" onclick="toggleTool(this, \'' + tc._id + '\')">';
+        html += '<svg class="tool-step-chevron' + (isOpen ? ' open' : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+        html += '<span class="tool-step-name">' + escapeHtml(tc.name || "tool") + '</span>';
+        if (statusText) html += '<span class="tool-step-status">' + statusText + '</span>';
+        html += '</div>';
+        if (tc.detail || tc.image) {
+          html += '<div class="tool-step-detail' + (isOpen ? ' open' : '') + '">';
+          if (tc.detail) {
+            var detailText = typeof tc.detail === "object" ? JSON.stringify(tc.detail, null, 2) : String(tc.detail);
+            html += escapeHtml(detailText);
+          }
+          if (tc.image) html += '<img src="' + tc.image + '" />';
+          html += '</div>';
+        }
+        html += '</div></div>';
+      }
+      html += '</div>';
+      list.innerHTML = html;
+      var lastStep = list.querySelector('.tool-step:last-child');
+      if (lastStep) lastStep.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+
+    window.toggleTool = function(headerEl, id) {
+      var chevron = headerEl.querySelector(".tool-step-chevron");
+      var detail = headerEl.closest(".tool-step-body").querySelector(".tool-step-detail");
+      if (!detail) return;
+      var isOpen = detail.classList.toggle("open");
+      chevron.classList.toggle("open", isOpen);
+      var s = session(false);
+      if (s) {
+        for (var mi = 0; mi < s.messages.length; mi++) {
+          if (s.messages[mi].toolCalls) {
+            for (var ti = 0; ti < s.messages[mi].toolCalls.length; ti++) {
+              if (s.messages[mi].toolCalls[ti]._id === id) {
+                s.messages[mi].toolCalls[ti]._open = isOpen;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    function currentRun() {
+      var s = session(false);
+      return state.currentRun || (s ? s.runs[0] : null) || null;
+    }
+    function updatePrimaryAction() {
+      var prompt = document.getElementById("prompt");
+      var btn = document.getElementById("primaryAction");
+      var sendIcon = document.getElementById("primaryActionSendIcon");
+      var pauseIcon = document.getElementById("primaryActionPauseIcon");
+      var spinnerIcon = document.getElementById("primaryActionSpinnerIcon");
+      var hasText = !!prompt.value.trim();
+      var active = state.isStreaming;
+      btn.disabled = state.pausePending || (!active && !hasText);
+      btn.title = state.pausePending ? "Pausing..." : active ? "Pause Model" : "Send Message";
+      sendIcon.style.display = active || state.pausePending ? "none" : "";
+      pauseIcon.style.display = active && !state.pausePending ? "" : "none";
+      spinnerIcon.style.display = state.pausePending ? "" : "none";
+    }
+    function render() { renderSessions(); renderChat(); renderOperations(); updatePrimaryAction(); save(); }
+
+    document.getElementById("newSession").onclick = newSession;
+    document.getElementById("toggleOperations").onclick = function() { document.getElementById("operationsSidebar").classList.toggle("closed"); };
+    document.getElementById("closeOperations").onclick = function() { document.getElementById("operationsSidebar").classList.add("closed"); };
+    document.getElementById("clearSession").onclick = function() {
+      var s = session(); s.messages = []; s.runs = []; s.updatedAt = Date.now();
+      state.currentRun = null; save(); render();
+    };
+    function upsertRun(run) {
+      var s = session();
+      var idx = -1;
+      for (var i = 0; i < s.runs.length; i++) { if (s.runs[i].id === run.id) { idx = i; break; } }
+      if (idx >= 0) s.runs[idx] = run; else s.runs.unshift(run);
+      state.currentRun = run; s.updatedAt = Date.now();
+    }
+
+    async function runWithSse(payload, assistantMessage) {
+      state.isStreaming = true;
+      state.pausePending = false;
+      state.activeAssistantMessage = assistantMessage;
+      render();
+      var res = await fetch("/api/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Blender-Agent-Token": token },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        var data = await res.json().catch(function() { return {}; });
+        throw new Error(data.error || res.statusText);
+      }
+      var reader = res.body.getReader();
+      state.streamReader = reader;
+      var decoder = new TextDecoder();
+      var buffer = "";
+      try {
+        while (true) {
+          var result = await reader.read();
+          if (result.done) break;
+          buffer += decoder.decode(result.value, { stream: true });
+          var NN = String.fromCharCode(10) + String.fromCharCode(10);
+          var N = String.fromCharCode(10);
+          var parts = buffer.split(NN);
+          buffer = parts.pop();
+          for (var pi = 0; pi < parts.length; pi++) {
+            var lines = parts[pi].split(N);
+            var dataLine = null;
+            for (var li = 0; li < lines.length; li++) {
+              if (lines[li].indexOf("data: ") === 0) { dataLine = lines[li]; break; }
+            }
+            if (!dataLine) continue;
+            var event;
+            try {
+              event = JSON.parse(dataLine.slice(6));
+            } catch (err) {
+              throw new Error("Malformed stream event: " + err.message);
+            }
+            if (event.type === "run") { upsertRun(event.run); }
+            if (event.type === "thinking") {
+              assistantMessage._streaming = true;
+              assistantMessage._paused = false;
+              renderChat();
+            }
+            if (event.type === "delta") {
+              assistantMessage.content += event.content || "";
+              assistantMessage._retrying = false;
+              renderChat();
+            }
+            if (event.type === "retry") {
+              assistantMessage.content = event.content || "";
+              assistantMessage._streaming = true;
+              assistantMessage._retrying = true;
+              renderChat();
+            }
+            if (event.type === "tool_call") {
+              if (!assistantMessage.toolCalls) assistantMessage.toolCalls = [];
+              assistantMessage.toolCalls.push({ name: event.tool_name || "tool", status: "running", detail: "", _open: false, _startedAt: Date.now() });
+              renderChat(); renderOperations();
+            }
+            if (event.type === "tool_result") {
+              if (!assistantMessage.toolCalls) assistantMessage.toolCalls = [];
+              var tc = null;
+              for (var j = assistantMessage.toolCalls.length - 1; j >= 0; j--) {
+                if (assistantMessage.toolCalls[j].status === "running") { tc = assistantMessage.toolCalls[j]; break; }
+              }
+              if (!tc) {
+                tc = { name: event.tool_name || "tool", status: "done", detail: "", _open: false };
+                assistantMessage.toolCalls.push(tc);
+              }
+              tc.status = "done";
+              tc.duration = tc._startedAt ? ((Date.now() - tc._startedAt) / 1000).toFixed(1) : null;
+              var shot = event.result && event.result.result;
+              if (isImageTool(event.tool_name) && shot && shot.preview_data_url) {
+                var label = event.tool_name === "render_scene_image" ? "Render captured" : "Screenshot captured";
+                var method = shot.capture_method || "screenshot";
+                tc.detail = label + " (" + (shot.preview_width || shot.width) + "x" + (shot.preview_height || shot.height) + ", " + method + ")";
+                tc.image = shot.preview_data_url;
+              } else {
+                tc.detail = typeof event.result === "object" ? event.result : String(event.result);
+              }
+              renderChat(); renderOperations();
+            }
+            if (event.type === "tool_call" || event.type === "tool_result" || event.type === "step" || event.type === "thinking" || event.type === "retry") { upsertRun(event.run); save(); }
+            if (event.type === "done") {
+              upsertRun(event.run);
+              assistantMessage.content = event.content || assistantMessage.content;
+              assistantMessage._streaming = false;
+              assistantMessage._paused = false;
+              assistantMessage._retrying = false;
+              state.isStreaming = false;
+              state.pausePending = false;
+              if (assistantMessage.toolCalls) {
+                for (var di = 0; di < assistantMessage.toolCalls.length; di++) {
+                  if (assistantMessage.toolCalls[di].status === "running") {
+                    assistantMessage.toolCalls[di].status = "done";
+                    assistantMessage.toolCalls[di].duration = assistantMessage.toolCalls[di]._startedAt ? ((Date.now() - assistantMessage.toolCalls[di]._startedAt) / 1000).toFixed(1) : null;
+                  }
+                }
+              }
+              render(); await reader.cancel().catch(function(){}); return;
+            }
+            if (event.type === "paused") {
+              upsertRun(event.run);
+              assistantMessage._streaming = false;
+              assistantMessage._paused = true;
+              assistantMessage._retrying = false;
+              state.isStreaming = false;
+              state.pausePending = false;
+              if (assistantMessage.toolCalls) {
+                for (var pi = 0; pi < assistantMessage.toolCalls.length; pi++) {
+                  if (assistantMessage.toolCalls[pi].status === "running") {
+                    assistantMessage.toolCalls[pi].status = "paused";
+                    assistantMessage.toolCalls[pi].duration = assistantMessage.toolCalls[pi]._startedAt ? ((Date.now() - assistantMessage.toolCalls[pi]._startedAt) / 1000).toFixed(1) : null;
+                  }
+                }
+              }
+              render(); await reader.cancel().catch(function(){}); return;
+            }
+            if (event.type === "error") {
+              assistantMessage.content = "Error: " + event.error;
+              assistantMessage._streaming = false;
+              state.isStreaming = false;
+              state.pausePending = false;
+              if (assistantMessage.toolCalls) {
+                for (var ei = 0; ei < assistantMessage.toolCalls.length; ei++) {
+                  if (assistantMessage.toolCalls[ei].status === "running") assistantMessage.toolCalls[ei].status = "error";
+                }
+              }
+              assistantMessage._retrying = false;
+              render(); await reader.cancel().catch(function(){}); return;
+            }
+          }
+        }
+      } finally {
+        state.streamReader = null;
+        state.activeAssistantMessage = null;
+      }
+    }
+
+    async function submitPrompt(event) {
+      event.preventDefault();
+      var prompt = document.getElementById("prompt");
+      var text = prompt.value.trim();
+      if (!text) return;
+      var s = session();
+      if (s.title === "New Chat") s.title = text.slice(0, 48);
+      s.messages.push({ role: "user", content: text });
+      var assistantMessage = { role: "assistant", content: "", toolCalls: [], _streaming: true, _paused: false };
+      s.messages.push(assistantMessage);
+      prompt.value = ""; prompt.style.height = "auto";
+      render();
+      try {
+        await runWithSse({
+          session_id: s.id,
+          messages: s.messages.filter(function(m) { return m.role === "user" || m.role === "assistant"; }).filter(function(m) { return m.content || m.role === "user"; }),
+          base_url: document.getElementById("baseUrl").value,
+          api_key: document.getElementById("apiKey").value,
+          model: document.getElementById("model").value,
+          max_tool_rounds: parseInt(document.getElementById("maxToolRounds").value) || 8
+        }, assistantMessage);
+      } catch (err) {
+        assistantMessage.content = "Error: " + err.message;
+        assistantMessage._streaming = false;
+        assistantMessage._retrying = false;
+        state.isStreaming = false;
+      } finally {
+        s.updatedAt = Date.now(); render();
+      }
+    }
+
+    document.getElementById("form").addEventListener("submit", submitPrompt);
+    document.getElementById("prompt").addEventListener("keydown", function(event) {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault(); document.getElementById("form").requestSubmit();
+      }
+    });
+    document.getElementById("prompt").addEventListener("input", function() {
+      this.style.height = "auto"; this.style.height = this.scrollHeight + "px";
+      updatePrimaryAction();
+    });
+    document.getElementById("primaryAction").onclick = async function() {
+      if (state.isStreaming) {
+        var run = currentRun();
+        if (!run) return;
+        state.pausePending = true;
+        state.isStreaming = false;
+        run.status = "paused";
+        if (state.activeAssistantMessage) {
+          state.activeAssistantMessage._streaming = false;
+          state.activeAssistantMessage._paused = true;
+          state.activeAssistantMessage._retrying = false;
+          if (state.activeAssistantMessage.toolCalls) {
+            for (var i = 0; i < state.activeAssistantMessage.toolCalls.length; i++) {
+              if (state.activeAssistantMessage.toolCalls[i].status === "running") {
+                state.activeAssistantMessage.toolCalls[i].status = "paused";
+              }
+            }
+          }
+        }
+        if (state.streamReader) {
+          state.streamReader.cancel().catch(function(){});
+        }
+        render();
+        fetch("/api/runs/" + run.id + "/pause", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Blender-Agent-Token": token }
+        }).catch(function(err) {
+          console.warn("Pause request failed", err);
+        }).finally(function() {
+          state.pausePending = false;
+          render();
+        });
+        return;
+      }
+      document.getElementById("form").requestSubmit();
+    };
+    render();
+  </script>
+</body>
+</html>
