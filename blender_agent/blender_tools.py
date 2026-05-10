@@ -858,6 +858,24 @@ def get_screenshot_of_area_as_image(area_ui_type: str, size_limit_in_bytes: int 
     return get_viewport_screenshot()
 
 
+def list_scene_objects() -> dict[str, Any]:
+    """Return selectable scene instances for the local web UI."""
+    active = bpy.context.view_layer.objects.active
+    objects = []
+    for obj in sorted(bpy.context.scene.objects, key=lambda item: item.name.lower()):
+        objects.append(
+            {
+                "name": obj.name,
+                "type": obj.type,
+                "data_name": obj.data.name if getattr(obj, "data", None) else None,
+                "visible": bool(obj.visible_get()),
+                "selected": bool(obj.select_get()),
+                "active": bool(active and obj.name == active.name),
+            }
+        )
+    return {"objects": objects}
+
+
 def dispatch_command(command: dict[str, Any]) -> dict[str, Any]:
     """Execute a Blender Lab MCP-style command: {"type": name, "params": {...}}."""
     cmd_type = command.get("type")
@@ -889,6 +907,7 @@ HANDLERS: dict[str, ToolHandler] = {
     "get_screenshot_of_window_as_json": get_screenshot_of_window_as_json,
     "get_screenshot_of_window_as_image": get_screenshot_of_window_as_image,
     "get_screenshot_of_area_as_image": get_screenshot_of_area_as_image,
+    "list_scene_objects": list_scene_objects,
     "jump_to_tab_by_name": jump_to_tab_by_name,
     "jump_to_tab_by_space_type": jump_to_tab_by_space_type,
     "jump_to_view3d_object_by_name": jump_to_view3d_object_by_name,

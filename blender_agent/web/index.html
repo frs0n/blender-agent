@@ -73,10 +73,33 @@
       40% { opacity: 1; transform: translateY(-1px); }
     }
     .input-wrapper { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, hsl(var(--background)) 50%, transparent); padding: 1rem; display: flex; justify-content: center; }
-    .input-box { width: 100%; max-width: 48rem; position: relative; display: flex; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 2rem; background: hsl(var(--background)); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-    .input-box textarea { width: 100%; background: transparent; border: none; padding: 14px 150px 14px 20px; line-height: 24px; outline: none; resize: none; color: hsl(var(--foreground)); min-height: 52px; max-height: 200px; font-size: 0.95rem; }
-    .input-actions { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; }
-    .mode-switch { display: inline-flex; align-items: center; gap: 2px; margin-right: 0.4rem; padding: 2px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted)); }
+    .input-box { box-sizing: border-box; width: 100%; max-width: 48rem; position: relative; display: flex; flex-direction: column; border: 1px solid hsl(var(--border)); border-radius: 1.75rem; background: hsl(var(--background)); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); padding: 0.5rem 0.55rem; min-height: 3.1rem; transition: border-radius 0.18s ease, padding 0.18s ease; }
+    .input-row { width: 100%; display: flex; align-items: center; gap: 0.5rem; min-height: 2rem; flex: 1; }
+    .input-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+    .input-topline { display: flex; width: 100%; flex-wrap: wrap; align-items: center; gap: 0.35rem; min-height: 1.75rem; max-height: 4rem; padding: 0 0.15rem 0.22rem 0.15rem; overflow: hidden; opacity: 1; transition: max-height 0.2s ease, min-height 0.2s ease, padding 0.2s ease, opacity 0.16s ease; }
+    .input-topline:empty { min-height: 0; max-height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; height: 0; overflow: hidden; }
+    .input-box textarea { width: 100%; background: transparent; border: none; padding: 0.06rem 0.15rem 0.1rem 0.15rem; line-height: 24px; outline: none; resize: none; color: hsl(var(--foreground)); min-height: 28px; max-height: 200px; font-size: 0.95rem; transition: padding 0.18s ease; }
+    .input-actions { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2rem; }
+    .object-picker-anchor { position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; min-height: 2rem; }
+    .object-add { width: 2rem; height: 2rem; color: hsl(var(--muted-foreground)); background: hsl(var(--muted)); border: 1px dashed hsl(var(--border)); }
+    .object-add:hover:not(:disabled), .object-add.active { color: hsl(var(--foreground)); background: hsl(var(--background)); border-style: solid; }
+    .object-chip { display: inline-flex; align-items: center; max-width: 11rem; height: 1.7rem; gap: 0.35rem; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted)); color: hsl(var(--foreground)); padding: 0 0.3rem 0 0.65rem; font-size: 0.76rem; }
+    .object-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .object-chip-remove { width: 1.1rem; height: 1.1rem; border: 0; border-radius: 999px; color: hsl(var(--muted-foreground)); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; background: transparent; }
+    .object-chip-remove:hover { color: hsl(var(--foreground)); background: hsl(var(--background)); }
+    .object-picker { position: absolute; left: 0; bottom: calc(100% + 10px); width: min(23rem, calc(100vw - 2rem)); max-height: 22rem; display: flex; flex-direction: column; gap: 0.35rem; padding: 0.55rem; border: 1px solid hsl(var(--border)); border-radius: 0.85rem; background: hsl(var(--background)); box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24); z-index: 60; }
+    .object-picker.hidden { display: none; }
+    .object-picker-list { display: flex; flex-direction: column; gap: 0.15rem; overflow-y: auto; min-height: 2rem; }
+    .object-picker-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2rem; padding: 0.38rem 0.45rem; border-radius: 0.45rem; color: hsl(var(--foreground)); cursor: pointer; text-align: left; }
+    .object-picker-row:hover, .object-picker-row.selected { background: hsl(var(--muted)); }
+    .object-picker-main { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
+    .object-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.84rem; }
+    .object-picker-meta { color: hsl(var(--muted-foreground)); font-size: 0.68rem; }
+    .object-picker-check { width: 1rem; height: 1rem; color: hsl(var(--muted-foreground)); flex-shrink: 0; }
+    .object-picker-empty { color: hsl(var(--muted-foreground)); font-size: 0.8rem; padding: 0.8rem; text-align: center; }
+    .message-targets { max-width: 85%; align-self: flex-end; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.35rem; margin-top: -0.2rem; }
+    .message-target-chip { max-width: 11rem; border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 0.16rem 0.5rem; color: hsl(var(--muted-foreground)); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mode-switch { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted)); }
     .mode-option { border: 0; border-radius: 999px; padding: 0.28rem 0.55rem; color: hsl(var(--muted-foreground)); font-size: 0.72rem; font-weight: 600; line-height: 1; cursor: pointer; transition: background 0.16s ease, color 0.16s ease; }
     .mode-option.active { background: hsl(var(--background)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
     .icon-btn { width: 2rem; height: 2rem; border-radius: 999px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: opacity 0.2s ease, background 0.2s ease; }
@@ -151,17 +174,30 @@
       </div>
       <div class="input-wrapper">
         <form id="form" class="input-box">
-          <textarea id="prompt" rows="1" placeholder="Send a message..."></textarea>
-          <div class="input-actions">
-            <div class="mode-switch" aria-label="Mode">
-              <button id="modeAsk" class="mode-option" type="button" title="Ask questions without modifying Blender">Ask</button>
-              <button id="modeAgent" class="mode-option" type="button" title="Use all tools to inspect and modify Blender">Agent</button>
+          <div id="selectedSceneObjects" class="input-topline"></div>
+          <div class="input-row">
+            <div class="object-picker-anchor">
+              <button id="openObjectPicker" class="icon-btn object-add" type="button" title="Add scene object">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <div id="objectPicker" class="object-picker hidden">
+                <div id="objectPickerList" class="object-picker-list"></div>
+              </div>
             </div>
-            <button id="primaryAction" class="icon-btn primary-action" type="button" title="Send Message">
-              <svg id="primaryActionSendIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              <svg id="primaryActionPauseIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
-              <svg id="primaryActionSpinnerIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none; animation: spin 0.7s linear infinite;"><circle cx="12" cy="12" r="8" stroke-opacity="0.25"></circle><path d="M20 12a8 8 0 0 0-8-8"></path></svg>
-            </button>
+            <div class="input-main">
+              <textarea id="prompt" rows="1" placeholder="Send a message..."></textarea>
+            </div>
+            <div class="input-actions">
+              <div class="mode-switch" aria-label="Mode">
+                <button id="modeAsk" class="mode-option" type="button" title="Ask questions without modifying Blender">Ask</button>
+                <button id="modeAgent" class="mode-option" type="button" title="Use all tools to inspect and modify Blender">Agent</button>
+              </div>
+              <button id="primaryAction" class="icon-btn primary-action" type="button" title="Send Message">
+                <svg id="primaryActionSendIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <svg id="primaryActionPauseIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+                <svg id="primaryActionSpinnerIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none; animation: spin 0.7s linear infinite;"><circle cx="12" cy="12" r="8" stroke-opacity="0.25"></circle><path d="M20 12a8 8 0 0 0-8-8"></path></svg>
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -212,8 +248,19 @@
       pausePending: false,
       streamReader: null,
       activeAssistantMessage: null,
-      mode: localStorage.getItem("blender-agent.mode") === "ask" ? "ask" : "agent"
+      mode: localStorage.getItem("blender-agent.mode") === "ask" ? "ask" : "agent",
+      sceneObjects: [],
+      selectedSceneObjectNames: safeParseJson(localStorage.getItem("blender-agent.selectedSceneObjects"), [], "selected scene objects"),
+      sceneObjectsLoading: false,
+      objectPickerOpen: false
     };
+    if (!Array.isArray(state.selectedSceneObjectNames)) state.selectedSceneObjectNames = [];
+    var legacySelectedObjectName = localStorage.getItem("blender-agent.selectedSceneObject") || "";
+    if (legacySelectedObjectName && state.selectedSceneObjectNames.indexOf(legacySelectedObjectName) < 0) {
+      state.selectedSceneObjectNames.push(legacySelectedObjectName);
+      localStorage.removeItem("blender-agent.selectedSceneObject");
+      localStorage.setItem("blender-agent.selectedSceneObjects", JSON.stringify(state.selectedSceneObjectNames));
+    }
     var saveTimer = null;
     function uid() { return "s_" + Math.random().toString(36).slice(2) + Date.now().toString(36); }
     function cleanToolCall(tc) {
@@ -226,6 +273,18 @@
     }
     function cleanMessage(message) {
       var clean = { role: message.role, content: message.content };
+      if (message.role === "user" && Array.isArray(message.selectedObjects) && message.selectedObjects.length) {
+        clean.selectedObjects = message.selectedObjects.map(function(obj) {
+          return {
+            name: obj.name,
+            type: obj.type,
+            data_name: obj.data_name,
+            visible: obj.visible,
+            selected: obj.selected,
+            active: obj.active
+          };
+        });
+      }
       if (message.role === "assistant" && Array.isArray(message.toolCalls) && message.toolCalls.length) {
         clean.toolCalls = message.toolCalls.map(cleanToolCall);
       }
@@ -312,6 +371,144 @@
         name === "get_screenshot_of_window_as_image" ||
         name === "get_screenshot_of_area_as_image";
     }
+    function sceneObjectByName(name) {
+      for (var i = 0; i < state.sceneObjects.length; i++) {
+        if (state.sceneObjects[i].name === name) return state.sceneObjects[i];
+      }
+      return null;
+    }
+    function selectedSceneObjects() {
+      var selected = [];
+      for (var i = 0; i < state.selectedSceneObjectNames.length; i++) {
+        var name = state.selectedSceneObjectNames[i];
+        selected.push(sceneObjectByName(name) || { name: name });
+      }
+      return selected;
+    }
+    function persistSelectedSceneObjects() {
+      localStorage.setItem("blender-agent.selectedSceneObjects", JSON.stringify(state.selectedSceneObjectNames));
+    }
+    function objectMeta(obj) {
+      var bits = [];
+      if (obj.type) bits.push(obj.type);
+      if (obj.active) bits.push("active");
+      else if (obj.selected) bits.push("selected");
+      if (obj.visible === false) bits.push("hidden");
+      return bits.join(" - ");
+    }
+    function renderSelectedSceneObjects() {
+      var box = document.getElementById("selectedSceneObjects");
+      var form = document.getElementById("form");
+      if (!box) return;
+      if (form) form.classList.toggle("has-selected-objects", state.selectedSceneObjectNames.length > 0);
+      box.innerHTML = "";
+      for (var i = 0; i < state.selectedSceneObjectNames.length; i++) {
+        var name = state.selectedSceneObjectNames[i];
+        var chip = document.createElement("span");
+        chip.className = "object-chip";
+        chip.innerHTML = '<span class="object-chip-name"></span><button type="button" class="object-chip-remove" aria-label=""></button>';
+        chip.querySelector(".object-chip-name").textContent = name;
+        var remove = chip.querySelector(".object-chip-remove");
+        remove.setAttribute("aria-label", "Remove " + name);
+        remove.title = "Remove " + name;
+        remove.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+        (function(objectName) { remove.onclick = function() { removeSceneObjectSelection(objectName); }; })(name);
+        box.appendChild(chip);
+      }
+    }
+    function renderSceneObjectPicker() {
+      var picker = document.getElementById("objectPicker");
+      var button = document.getElementById("openObjectPicker");
+      var list = document.getElementById("objectPickerList");
+      if (!picker || !button || !list) return;
+      picker.classList.toggle("hidden", !state.objectPickerOpen);
+      button.classList.toggle("active", state.objectPickerOpen);
+      list.innerHTML = "";
+      if (state.sceneObjectsLoading && !state.sceneObjects.length) {
+        list.innerHTML = '<div class="object-picker-empty">Loading scene objects...</div>';
+        return;
+      }
+      var matches = state.sceneObjects.slice(0, 120);
+      if (!matches.length) {
+        list.innerHTML = '<div class="object-picker-empty">No scene objects found.</div>';
+        return;
+      }
+      for (var i = 0; i < matches.length; i++) {
+        var obj = matches[i];
+        var isSelected = state.selectedSceneObjectNames.indexOf(obj.name) >= 0;
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "object-picker-row" + (isSelected ? " selected" : "");
+        row.innerHTML = '<span class="object-picker-main"><span class="object-picker-name"></span><span class="object-picker-meta"></span></span><span class="object-picker-check"></span>';
+        row.querySelector(".object-picker-name").textContent = obj.name;
+        row.querySelector(".object-picker-meta").textContent = objectMeta(obj);
+        row.querySelector(".object-picker-check").innerHTML = isSelected
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>';
+        (function(objectName) { row.onclick = function() { toggleSceneObjectSelection(objectName); }; })(obj.name);
+        list.appendChild(row);
+      }
+    }
+    function renderSceneObjectControls() {
+      renderSelectedSceneObjects();
+      renderSceneObjectPicker();
+    }
+    function toggleSceneObjectSelection(name) {
+      var idx = state.selectedSceneObjectNames.indexOf(name);
+      if (idx >= 0) state.selectedSceneObjectNames.splice(idx, 1);
+      else state.selectedSceneObjectNames.push(name);
+      persistSelectedSceneObjects();
+      renderSceneObjectControls();
+      save();
+    }
+    function removeSceneObjectSelection(name) {
+      var idx = state.selectedSceneObjectNames.indexOf(name);
+      if (idx < 0) return;
+      state.selectedSceneObjectNames.splice(idx, 1);
+      persistSelectedSceneObjects();
+      renderSceneObjectControls();
+      save();
+    }
+    function toggleObjectPicker() {
+      state.objectPickerOpen = !state.objectPickerOpen;
+      if (state.objectPickerOpen) {
+        loadSceneObjects();
+      } else {
+        renderSceneObjectPicker();
+      }
+    }
+    function closeObjectPicker() {
+      if (!state.objectPickerOpen) return;
+      state.objectPickerOpen = false;
+      renderSceneObjectPicker();
+    }
+    async function loadSceneObjects(options) {
+      options = options || {};
+      if (state.sceneObjectsLoading) return;
+      state.sceneObjectsLoading = true;
+      if (!options.silent) renderSceneObjectControls();
+      try {
+        var res = await fetch("/api/scene/objects", { headers: { "X-Blender-Agent-Token": token } });
+        if (!res.ok) throw new Error(res.statusText);
+        var data = await res.json();
+        state.sceneObjects = Array.isArray(data.objects) ? data.objects : [];
+      } catch (err) {
+        console.warn("Unable to load scene objects", err);
+      } finally {
+        state.sceneObjectsLoading = false;
+        renderSceneObjectControls();
+      }
+    }
+    function messageSelectedObjectsHtml(objects) {
+      if (!Array.isArray(objects) || !objects.length) return "";
+      var html = '<div class="message-targets">';
+      for (var i = 0; i < objects.length; i++) {
+        var label = objects[i].name || "Object";
+        if (objects[i].type) label += " - " + objects[i].type;
+        html += '<span class="message-target-chip">' + escapeHtml(label) + '</span>';
+      }
+      return html + '</div>';
+    }
 
     function renderSessions() {
       var box = document.getElementById("sessions"); box.innerHTML = "";
@@ -341,7 +538,7 @@
         var el = document.createElement("div");
         el.className = "message " + (m.role === "user" ? "message-user" : "message-assistant");
         if (m.role === "user") {
-          el.innerHTML = '<div class="bubble bubble-user">' + escapeHtml(m.content) + '</div>';
+          el.innerHTML = '<div class="bubble bubble-user">' + escapeHtml(m.content) + '</div>' + messageSelectedObjectsHtml(m.selectedObjects);
         } else {
           var html = "";
           if (m.content) {
@@ -468,11 +665,16 @@
       localStorage.setItem("blender-agent.mode", state.mode);
       renderMode();
     }
-    function render() { renderSessions(); renderChat(); renderOperations(); updatePrimaryAction(); renderMode(); save(); }
+    function render() { renderSessions(); renderChat(); renderOperations(); updatePrimaryAction(); renderMode(); renderSceneObjectControls(); save(); }
 
     document.getElementById("newSession").onclick = newSession;
     document.getElementById("modeAsk").onclick = function() { setMode("ask"); };
     document.getElementById("modeAgent").onclick = function() { setMode("agent"); };
+    document.getElementById("openObjectPicker").onclick = toggleObjectPicker;
+    document.addEventListener("click", function(event) {
+      var anchor = document.querySelector(".object-picker-anchor");
+      if (anchor && !anchor.contains(event.target)) closeObjectPicker();
+    });
     document.getElementById("toggleOperations").onclick = function() { document.getElementById("operationsSidebar").classList.toggle("closed"); };
     document.getElementById("closeOperations").onclick = function() { document.getElementById("operationsSidebar").classList.add("closed"); };
     document.getElementById("clearSession").onclick = function() {
@@ -650,7 +852,8 @@
       if (!text) return;
       var s = session();
       if (s.title === "New Chat") s.title = text.slice(0, 48);
-      s.messages.push({ role: "user", content: text });
+      var selectedObjects = selectedSceneObjects();
+      s.messages.push({ role: "user", content: text, selectedObjects: selectedObjects });
       var assistantMessage = { role: "assistant", content: "", toolCalls: [], _streaming: true, _paused: false };
       s.messages.push(assistantMessage);
       prompt.value = ""; prompt.style.height = "auto";
@@ -663,7 +866,8 @@
           api_key: document.getElementById("apiKey").value,
           model: document.getElementById("model").value,
           max_tool_rounds: parseInt(document.getElementById("maxToolRounds").value) || 8,
-          mode: state.mode
+          mode: state.mode,
+          selected_scene_objects: selectedObjects
         }, assistantMessage);
       } catch (err) {
         assistantMessage.content = "Error: " + err.message;

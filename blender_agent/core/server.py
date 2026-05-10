@@ -285,6 +285,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             mode = "ask" if (query.get("mode") or ["agent"])[0] == "ask" else "agent"
             self._send_json(200, {"mode": mode, "tools": blender_tools.tools_for_mode(mode)})
             return
+        if parsed_path.path == "/api/scene/objects":
+            if not self._authorized():
+                self._send_json(401, {"error": "Unauthorized"})
+                return
+            result = self.server.executor.execute({"type": "list_scene_objects", "params": {}})
+            if result.get("status") != "success":
+                self._send_json(500, {"error": result.get("message") or "Unable to list scene objects"})
+                return
+            self._send_json(200, result.get("result") or {"objects": []})
+            return
         if self.path == "/api/health":
             self._send_json(200, {"status": "ok", "time": time.time()})
             return

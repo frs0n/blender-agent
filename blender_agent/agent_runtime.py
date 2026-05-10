@@ -360,6 +360,43 @@ def _system_prompt(mode: str) -> str:
     )
 
 
+def _selected_scene_objects_message(payload: dict[str, Any]) -> dict[str, str] | None:
+    raw_selected = payload.get("selected_scene_objects")
+    if raw_selected is None and isinstance(payload.get("selected_scene_object"), dict):
+        raw_selected = [payload["selected_scene_object"]]
+    if not isinstance(raw_selected, list):
+        return None
+    selected_objects = []
+    for item in raw_selected:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if name:
+            selected_objects.append((name, item))
+    if not selected_objects:
+        return None
+    details = []
+    for name, selected in selected_objects:
+        object_type = str(selected.get("type") or "UNKNOWN")
+        data_name = selected.get("data_name")
+        visibility = "visible" if selected.get("visible", True) else "hidden"
+        selection = "selected in Blender" if selected.get("selected") else "not selected in Blender"
+        active = "active object" if selected.get("active") else "not active"
+        data_part = f', data-block "{data_name}"' if data_name else ""
+        details.append(f'- "{name}" ({object_type}{data_part}; {visibility}; {selection}; {active})')
+    return {
+        "role": "system",
+        "content": (
+            "## Web UI Selected Scene Objects\n"
+            "The user selected these Blender scene objects before sending the prompt. "
+            "When the user refers to selected models, current models, target objects, "
+            "or these objects, use this set. Prefer exact object-name tool arguments "
+            "for object-specific work.\n"
+            + "\n".join(details)
+        ),
+    }
+
+
 def _json_request(url: str, payload: dict[str, Any], api_key: str, timeout: int = REQUEST_TIMEOUT_SECONDS) -> dict[str, Any]:
     def operation() -> dict[str, Any]:
         data = json.dumps(payload).encode("utf-8")
@@ -586,6 +623,9 @@ class ToolCallingAgent:
 
     def initial_messages(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         messages = [{"role": "system", "content": _system_prompt(self.mode)}]
+        selected_object_message = _selected_scene_objects_message(payload)
+        if selected_object_message:
+            messages.append(selected_object_message)
         messages.extend(normalise_messages(payload.get("messages") or []))
         return messages
 
