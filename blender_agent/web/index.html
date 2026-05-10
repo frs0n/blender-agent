@@ -54,12 +54,6 @@
     .sidebar { width: 260px; border-right: 1px solid hsl(var(--border)); background: hsl(var(--background)); display: flex; flex-direction: column; transition: all 0.2s ease; z-index: 40; position: relative; flex-shrink: 0; }
     .sidebar.closed { width: 0; border-right: none; overflow: hidden; }
     .sidebar.closed > * { visibility: hidden; opacity: 0; transition: opacity 0.1s; }
-    @media (max-width: 768px) {
-      .sidebar { position: absolute; top: 0; bottom: 0; left: 0; }
-      .sidebar:not(.closed) { width: 260px; border-right: 1px solid hsl(var(--border)); }
-      .sidebar.closed { transform: translateX(-100%); width: 260px; visibility: visible; }
-      .sidebar.closed > * { visibility: visible; opacity: 1; }
-    }
     .main-content { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 0; background: hsl(var(--background)); transition: margin-left 0.2s ease; }
     .chat-scroll { flex: 1; overflow-y: auto; padding-bottom: 120px; }
     .chat-container { max-width: 48rem; margin: 0 auto; padding: 2rem 1rem; display: flex; flex-direction: column; gap: 1.5rem; }
@@ -295,15 +289,6 @@
     };
     document.getElementById("toggleSidebar").onclick = function() { document.getElementById("sidebar").classList.toggle("closed"); };
     
-    // Auto-hide sidebar on small screens
-    if (window.innerWidth <= 768) {
-      document.getElementById("sidebar").classList.add("closed");
-    }
-    window.addEventListener("resize", function() {
-      if (window.innerWidth <= 768) {
-        document.getElementById("sidebar").classList.add("closed");
-      }
-    });
     window.addEventListener("beforeunload", function() {
       if (saveTimer) {
         window.clearTimeout(saveTimer);
