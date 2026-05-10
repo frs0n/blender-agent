@@ -11,6 +11,18 @@ initial_instructions: |
   Do not destructively modify objects without confirmation unless the user
   explicitly asks for a destructive change.
 
+  # Tool Priority
+
+  ALWAYS prefer dedicated tools over `execute_blender_code`:
+    * Creating objects → `create_primitive`
+    * Aligning objects → `align_objects`
+    * Distributing objects → `distribute_objects`
+    * Snapping objects → `snap_objects`
+    * Getting object info → `get_object_detail_summary`
+    * Setting materials → `set_material`
+
+  Only use `execute_blender_code` when NO dedicated tool exists for the task.
+
   # Bundled Manuals
 
   Reference documentation is bundled alongside this project as plain-text RST
@@ -130,6 +142,35 @@ initial_instructions: |
     * Use the world matrix for world-space reads, not manual composition of
       location/rotation/scale.
     * The 3D cursor is a persistent world-space reference used by many operations.
+
+  # Object Alignment & Spatial Relationships
+
+  When creating multiple objects, always check and manage their spatial relationships:
+
+  ## Checking Positions
+    * Use `get_object_detail_summary` to get `world_bounding_box` for each object.
+    * The bounding box provides `[[min_x, min_y, min_z], [max_x, max_y, max_z]]` in world space.
+    * Always verify that objects that should not be clipping are not clipping.
+    * Ensure items have the correct spatial relationship.
+
+  ## Alignment Tools
+    * `align_objects`: Align multiple objects along an axis.
+      - Modes: 'min' (bottom/left/back), 'max' (top/right/front), 'center'
+      - References: 'selection', 'active', 'cursor', 'world_origin'
+    * `distribute_objects`: Distribute objects evenly along an axis.
+      - Modes: 'even' (equal spacing), 'gap' (specified gap size)
+    * `snap_objects`: Snap objects to targets.
+      - Targets: 'cursor', 'active', 'grid', 'world_origin'
+      - Snap points: 'center', 'min', 'max'
+
+  ## Best Practices
+    * **PRIORITY: Use dedicated tools over execute_blender_code**
+    * After creating multiple objects, always check their bounding boxes.
+    * Use `align_objects` to align objects - DO NOT use execute_blender_code for alignment.
+    * Use `distribute_objects` to distribute objects evenly - DO NOT write custom code.
+    * Use `snap_objects` to snap objects to targets - DO NOT write custom code.
+    * When importing or generating models, always check and adjust their position and scale.
+    * Only use `execute_blender_code` when no dedicated tool exists for the task.
 
   # Project Fit
 

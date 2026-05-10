@@ -799,6 +799,51 @@ def render_thumbnail_to_path(output_path: str) -> dict[str, Any]:
     return _run_official_toolcode("render_thumbnail_to_path", {"output_path": output_path})
 
 
+def align_objects(
+    object_names: list[str],
+    axis: str,
+    mode: str,
+    reference: str = "selection",
+) -> dict[str, Any]:
+    """Align multiple objects along a specified axis."""
+    return _run_official_toolcode("align_objects", {
+        "object_names": object_names,
+        "axis": axis,
+        "mode": mode,
+        "reference": reference,
+    })
+
+
+def distribute_objects(
+    object_names: list[str],
+    axis: str,
+    mode: str = "even",
+    gap_size: float = 0.0,
+) -> dict[str, Any]:
+    """Distribute multiple objects evenly along a specified axis."""
+    return _run_official_toolcode("distribute_objects", {
+        "object_names": object_names,
+        "axis": axis,
+        "mode": mode,
+        "gap_size": gap_size,
+    })
+
+
+def snap_objects(
+    object_names: list[str],
+    target: str,
+    snap_point: str = "center",
+    axes: list[str] = ("x", "y", "z"),
+) -> dict[str, Any]:
+    """Snap objects to a specified target."""
+    return _run_official_toolcode("snap_objects", {
+        "object_names": object_names,
+        "target": target,
+        "snap_point": snap_point,
+        "axes": axes,
+    })
+
+
 def get_screenshot_of_window_as_json() -> dict[str, Any]:
     return _run_official_toolcode("get_screenshot_of_window_as_json")
 
@@ -850,6 +895,10 @@ HANDLERS: dict[str, ToolHandler] = {
     "jump_to_view3d_object_data_by_name": jump_to_view3d_object_data_by_name,
     "render_viewport_to_path": render_viewport_to_path,
     "render_thumbnail_to_path": render_thumbnail_to_path,
+    "align_objects": align_objects,
+    "distribute_objects": distribute_objects,
+    "snap_objects": snap_objects,
+    "create_primitive": create_primitive,
     # Compatibility aliases for the local UI and older saved sessions.
     "get_scene_info": get_objects_summary,
     "get_object_info": get_object_detail_summary,
@@ -909,6 +958,30 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
     _tool("jump_to_view3d_object_data_by_name", "Move the 3D viewport to the object whose data-block name matches name (e.g. mesh data name, not object name).", {"name": _STRING, "allow_edits": _BOOL}, ["name"]),
     _tool("render_viewport_to_path", "Render the current scene to output_path using current render settings.", {"output_path": _STRING}, ["output_path"]),
     _tool("render_thumbnail_to_path", "Render a small, low-quality thumbnail to output_path.", {"output_path": _STRING}, ["output_path"]),
+    _tool("align_objects", "Align multiple objects along a specified axis. Supports different alignment modes and reference points.", {
+        "object_names": {"type": "array", "items": _STRING, "description": "List of object names to align"},
+        "axis": {**_STRING, "description": "Axis to align along ('x', 'y', or 'z')"},
+        "mode": {**_STRING, "description": "Alignment mode: 'min' (bottom/left/back), 'max' (top/right/front), 'center'"},
+        "reference": {**_STRING, "default": "selection", "description": "Reference: 'selection', 'active', 'cursor', 'world_origin'"},
+    }, ["object_names", "axis", "mode"]),
+    _tool("distribute_objects", "Distribute multiple objects evenly along a specified axis.", {
+        "object_names": {"type": "array", "items": _STRING, "description": "List of object names to distribute"},
+        "axis": {**_STRING, "description": "Axis to distribute along ('x', 'y', or 'z')"},
+        "mode": {**_STRING, "default": "even", "description": "Distribution mode: 'even' (equal spacing), 'gap' (specified gap)"},
+        "gap_size": {"type": "number", "default": 0.0, "description": "Gap size in Blender units (only for mode='gap')"},
+    }, ["object_names", "axis"]),
+    _tool("snap_objects", "Snap objects to a specified target (cursor, grid, active object, world origin).", {
+        "object_names": {"type": "array", "items": _STRING, "description": "List of object names to snap"},
+        "target": {**_STRING, "description": "Target: 'cursor', 'active', 'grid', 'world_origin'"},
+        "snap_point": {**_STRING, "default": "center", "description": "Snap point: 'center', 'min' (bottom/left/back), 'max' (top/right/front)"},
+        "axes": {"type": "array", "items": _STRING, "default": ["x", "y", "z"], "description": "Axes to snap"},
+    }, ["object_names", "target"]),
+    _tool("create_primitive", "Create a primitive 3D object (cube, sphere, cylinder, etc.) at a specified location.", {
+        "primitive_type": {**_STRING, "description": "Type: 'cube', 'sphere', 'uv_sphere', 'cylinder', 'cone', 'plane', 'torus'"},
+        "name": {**_STRING, "description": "Object name (optional)"},
+        "location": {"type": "array", "items": {"type": "number"}, "description": "Location [x, y, z] (default: [0, 0, 0])"},
+        "scale": {"type": "array", "items": {"type": "number"}, "description": "Scale [x, y, z] (optional)"},
+    }, ["primitive_type"]),
 ]
 
 
@@ -918,6 +991,18 @@ You are running inside Blender Agent's embedded local runtime.
 IMPORTANT: Respect existing structure and naming conventions.
 NEVER assume missing values - inspect the scene first.
 Do not destructively modify objects without confirmation.
+
+# Tool Priority
+
+ALWAYS prefer dedicated tools over `execute_blender_code`:
+- Creating objects → `create_primitive`
+- Aligning objects → `align_objects`
+- Distributing objects → `distribute_objects`
+- Snapping objects → `snap_objects`
+- Getting object info → `get_object_detail_summary`
+- Setting materials → `set_material`
+
+Only use `execute_blender_code` when NO dedicated tool exists for the task.
 
 Use `execute_blender_code` only when the other Blender tools do not provide the
 functionality you need. Return structured data from executed code by assigning a

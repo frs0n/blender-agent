@@ -27,6 +27,7 @@ class Result(NamedTuple):
     rotation: list[float] | None = None
     scale: list[float] | None = None
     dimensions: list[float] | None = None
+    world_bounding_box: list[list[float]] | None = None
     parent: str | None = None
     children: list[str] | None = None
     modifiers: list[dict[str, object]] | None = None
@@ -36,6 +37,20 @@ class Result(NamedTuple):
     data_name: str | None = None
     collections: list[str] | None = None
     message: str | None = None
+
+
+def _get_aabb(obj):
+    """Returns the world-space axis-aligned bounding box (AABB) of an object."""
+    import mathutils  # pylint: disable=import-error,no-name-in-module
+
+    if obj.type != 'MESH':
+        return None
+
+    local_bbox_corners = [mathutils.Vector(corner) for corner in obj.bound_box]
+    world_bbox_corners = [obj.matrix_world @ corner for corner in local_bbox_corners]
+    min_corner = mathutils.Vector(map(min, zip(*world_bbox_corners)))
+    max_corner = mathutils.Vector(map(max, zip(*world_bbox_corners)))
+    return [[*min_corner], [*max_corner]]
 
 
 def main(params: Params) -> Result:
@@ -51,6 +66,8 @@ def main(params: Params) -> Result:
             ),
         )
 
+    bbox = _get_aabb(obj)
+
     return Result(
         status="ok",
         name=obj.name,
@@ -59,6 +76,7 @@ def main(params: Params) -> Result:
         rotation=list(obj.rotation_euler),
         scale=list(obj.scale),
         dimensions=list(obj.dimensions),
+        world_bounding_box=bbox,
         parent=obj.parent.name if obj.parent else None,
         children=[child.name for child in obj.children],
         modifiers=[
