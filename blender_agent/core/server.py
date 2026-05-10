@@ -79,20 +79,40 @@ class AgentRun:
 
 @dataclass
 class RunControl:
-    loop: asyncio.AbstractEventLoop | None = None
-    task: asyncio.Task[Any] | None = None
-    paused: bool = False
+    """Cooperative loop control — Swarm-style pause/resume/stop.
 
-    def attach(self, loop: asyncio.AbstractEventLoop, task: asyncio.Task[Any]) -> None:
-        self.loop = loop
-        self.task = task
+    Uses simple flags checked cooperatively by the agent loop at every yield point
+    (between SSE chunks, before/after tool calls, at the top of each step).
+    A ``paused`` flag causes :func:`check` to raise :class:`agent_runtime.RunPausedError`
+    which propagates up to :func:`run_agent` where the loop state is preserved for resume.
+    """
+
+    paused: bool = False
+    stopped: bool = False
+    resume_state: dict | None = None  # {messages, step_number, final_answer}
+
+    def check(self) -> None:
+        """Cooperative check called at every yield point in the agent loop.
+
+        Raises:
+            RunPausedError: Pause was requested — save state and exit the loop.
+            RunStoppedError: Stop was requested — exit permanently.
+        """
+        if self.stopped:
+            raise agent_runtime.RunStoppedError()
         if self.paused:
-            self.request_pause()
+            raise agent_runtime.RunPausedError()
 
     def request_pause(self) -> None:
         self.paused = True
-        if self.loop and self.task and not self.task.done():
-            self.loop.call_soon_threadsafe(self.task.cancel)
+
+    def request_resume(self) -> None:
+        self.paused = False
+        self.stopped = False
+
+    def request_stop(self) -> None:
+        self.stopped = True
+        self.paused = True  # unblock any pending pause check
 
 
 class RunStore:
@@ -127,16 +147,24 @@ def _launch_agent_run(
     server: BlenderAgentHTTPServer,
     payload: dict[str, Any],
     event_queue: queue.Queue[dict[str, Any]] | None = None,
+    control: RunControl | None = None,
+    existing_run: AgentRun | None = None,
 ) -> AgentRun:
-    run = server.store.create(payload.get("session_id") or "default")
-    control = RunControl()
+    if existing_run is not None:
+        run = existing_run
+    else:
+        run = server.store.create(payload.get("session_id") or "default")
+    if control is None:
+        control = RunControl()
+    control.payload = payload
     server.controls[run.id] = control
 
     def run_wrapper() -> None:
         try:
             run_agent(payload, server.executor, server.store, run, event_queue, control)
         finally:
-            server.controls.pop(run.id, None)
+            if run.status not in ("paused",):
+                server.controls.pop(run.id, None)
 
     threading.Thread(target=run_wrapper, daemon=True).start()
     return run
@@ -288,6 +316,35 @@ class RequestHandler(BaseHTTPRequestHandler):
                     self.server.store.update(run)
                 self._send_json(200, {"status": "paused", "run_id": run_id})
                 return
+            if self.path.startswith("/api/runs/") and self.path.endswith("/resume"):
+                run_id = self.path.rsplit("/", 2)[-2]
+                control = self.server.controls.get(run_id)
+                run = self.server.store.get(run_id)
+                if not control or not run:
+                    self._send_json(404, {"error": "Run not found"})
+                    return
+                if not control.resume_state:
+                    self._send_json(400, {"error": "Run has no saved state to resume from"})
+                    return
+                control.request_resume()
+                run.status = "running"
+                run.ended_at = None
+                self.server.store.update(run)
+                event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "close")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self._send_sse_event({"type": "run", "run": run.to_dict()})
+                _launch_agent_run(self.server, getattr(control, "payload", {}), event_queue, control, existing_run=run)
+                while True:
+                    event = event_queue.get()
+                    self._send_sse_event(event)
+                    if event.get("type") in {"done", "error", "paused", "stopped"}:
+                        break
+                return
             if self.path == "/api/chat":
                 payload = self._read_json()
                 result = run_chat_completion(payload, self.server.executor)
@@ -312,7 +369,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 while True:
                     event = event_queue.get()
                     self._send_sse_event(event)
-                    if event.get("type") in {"done", "error", "paused"}:
+                    if event.get("type") in {"done", "error", "paused", "stopped"}:
                         break
                 return
             self._send_json(404, {"error": "Not found"})
@@ -348,20 +405,36 @@ def run_agent(
         return run.to_dict()
 
     run.status = "running"
+    run.ended_at = None
     sink.emit({"type": "step", "summary": "Run started with tool-calling runtime"})
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
-        task = loop.create_task(agent_runtime.run_tool_calling_async(payload, executor, sink))
-        if control:
-            control.attach(loop, task)
+        check_fn = control.check if control else None
+        resume_state = control.resume_state if control else None
+
+        def save_state_cb(state: dict) -> None:
+            if control:
+                control.resume_state = state
+
+        task = loop.create_task(
+            agent_runtime.run_tool_calling_async(
+                payload, executor, sink, check=check_fn, resume_state=resume_state, save_state=save_state_cb
+            )
+        )
         result = loop.run_until_complete(task)
         return result
-    except asyncio.CancelledError:
+    except agent_runtime.RunPausedError:
         run.status = "paused"
         run.error = None
         run.ended_at = time.time()
         sink.emit({"type": "paused", "content": run.content})
+        return run.to_dict()
+    except agent_runtime.RunStoppedError:
+        run.status = "stopped"
+        run.error = None
+        run.ended_at = time.time()
+        sink.emit({"type": "stopped", "content": run.content})
         return run.to_dict()
     except Exception as exc:
         traceback.print_exc()
@@ -371,9 +444,6 @@ def run_agent(
         sink.emit({"type": "error", "error": str(exc)})
         return run.to_dict()
     finally:
-        if control:
-            control.loop = None
-            control.task = None
         loop.close()
         asyncio.set_event_loop(None)
 

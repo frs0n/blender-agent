@@ -12,6 +12,14 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Protocol, TypeVar
 
+
+class RunPausedError(Exception):
+    """Raised cooperatively when the agent loop should pause."""
+
+
+class RunStoppedError(Exception):
+    """Raised cooperatively when the agent loop should stop permanently."""
+
 from . import blender_tools
 
 
@@ -493,6 +501,7 @@ class OpenAICompatibleModel:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
         sink: Sink,
+        check: Callable[[], None] | None = None,
     ) -> ChatCompletion:
         payload = self.completion_payload(messages, tools, stream=True)
         last_exc: Exception | None = None
@@ -501,6 +510,8 @@ class OpenAICompatibleModel:
             events = []
             try:
                 for event in _stream_request_once(self.url, payload, self.api_key):
+                    if check is not None:
+                        check()
                     events.append(event)
                     choices = event.get("choices") or []
                     if not choices:
@@ -510,6 +521,9 @@ class OpenAICompatibleModel:
                         sink.run.content += delta
                         sink.emit({"type": "delta", "content": delta})
                 return _stream_events_to_completion(events)
+            except (RunPausedError, RunStoppedError):
+                sink.run.content = attempt_start_content
+                raise
             except Exception as exc:  # noqa: BLE001 - retryable network failures are handled below
                 last_exc = exc
                 if attempt >= REQUEST_TOTAL_ATTEMPTS or not _is_retryable_exception(exc):
@@ -548,18 +562,31 @@ class ToolCallingAgent:
         messages.extend(normalise_messages(payload.get("messages") or []))
         return messages
 
-    async def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        messages = self.initial_messages(payload)
-        final_answer = None
-        for step_number in range(1, self.max_steps + 1):
+    async def run(self, payload: dict[str, Any], check: Callable[[], None] | None = None, resume_state: dict | None = None, save_state: Callable[[dict], None] | None = None) -> dict[str, Any]:
+        if resume_state:
+            messages = resume_state["messages"]
+            start_step = resume_state["step_number"]
+            final_answer = resume_state.get("final_answer")
+        else:
+            messages = self.initial_messages(payload)
+            start_step = 1
+            final_answer = None
+
+        for step_number in range(start_step, self.max_steps + 1):
+            if check is not None:
+                check()
+            if save_state is not None:
+                save_state({"messages": json.loads(json.dumps(messages)), "step_number": step_number, "final_answer": final_answer})
             llm_step = self.sink.step("llm", f"Model turn {step_number}", f"model={self.model.model}")
             self.sink.emit({"type": "thinking", "status": "start", "turn": step_number})
             action_step = ActionStep(step_number=step_number, model_input_messages=json.loads(json.dumps(messages)))
             try:
-                completion = self.model.generate_stream(messages, _runtime_tools(), self.sink)
+                completion = self.model.generate_stream(messages, _runtime_tools(), self.sink, check)
             except Exception as exc:
+                if isinstance(exc, (RunPausedError, RunStoppedError)):
+                    raise
                 if self._retry_without_images(messages, exc):
-                    completion = self.model.generate_stream(messages, _runtime_tools(), self.sink)
+                    completion = self.model.generate_stream(messages, _runtime_tools(), self.sink, check)
                 else:
                     self.sink.finish_step(llm_step, "failed", "Model request failed")
                     raise
@@ -575,7 +602,7 @@ class ToolCallingAgent:
                         "tool_calls": [tool_call.to_message_tool_call() for tool_call in completion.tool_calls],
                     }
                 )
-                final_answer = await self.process_tool_calls(completion.tool_calls, messages, action_step)
+                final_answer = await self.process_tool_calls(completion.tool_calls, messages, action_step, check)
                 action_step.ended_at = time.time()
                 self.memory.append(action_step)
                 if final_answer is not None:
@@ -602,9 +629,12 @@ class ToolCallingAgent:
         tool_calls: list[ToolCall],
         messages: list[dict[str, Any]],
         action_step: ActionStep,
+        check: Callable[[], None] | None = None,
     ) -> str | None:
         final_answer = None
         for tool_call in tool_calls:
+            if check is not None:
+                check()
             if tool_call.name == "final_answer":
                 if len(tool_calls) > 1:
                     raise RuntimeError("final_answer must be the only tool call in a model turn")
@@ -612,7 +642,7 @@ class ToolCallingAgent:
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": final_answer})
                 continue
 
-            result = await self.execute_tool_call(tool_call)
+            result = await self.execute_tool_call(tool_call, check)
             observation = tool_result_content(result)
             action_step.observations.append(observation)
             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": observation})
@@ -621,7 +651,7 @@ class ToolCallingAgent:
                 messages.append(visual_message)
         return final_answer
 
-    async def execute_tool_call(self, tool_call: ToolCall) -> dict[str, Any]:
+    async def execute_tool_call(self, tool_call: ToolCall, check: Callable[[], None] | None = None) -> dict[str, Any]:
         tool_name = tool_call.name
         tool_args = tool_call.arguments if isinstance(tool_call.arguments, dict) else {}
         tool_step = self.sink.step("tool", f"Tool: {tool_name}", json.dumps(tool_args, indent=2))
@@ -635,10 +665,14 @@ class ToolCallingAgent:
                 "arguments": tool_args,
             }
         )
+        if check is not None:
+            check()
         result = await asyncio.to_thread(
             self.executor.execute,
             {"type": tool_name, "params": tool_args or {}},
         )
+        if check is not None:
+            check()
         status = "completed" if result.get("status") == "success" else "failed"
         self.sink.finish_step(tool_step, status, json.dumps(client_tool_result(result), indent=2))
         self.sink.emit(
@@ -697,7 +731,14 @@ def run_tool_calling(payload: dict[str, Any], executor: Executor, sink: Sink) ->
     return asyncio.run(run_tool_calling_async(payload, executor, sink))
 
 
-async def run_tool_calling_async(payload: dict[str, Any], executor: Executor, sink: Sink) -> dict[str, Any]:
+async def run_tool_calling_async(
+    payload: dict[str, Any],
+    executor: Executor,
+    sink: Sink,
+    check: Callable[[], None] | None = None,
+    resume_state: dict | None = None,
+    save_state: Callable[[dict], None] | None = None,
+) -> dict[str, Any]:
     api_key = payload.get("api_key") or ""
     if not api_key:
         raise RuntimeError("API key is required")
@@ -713,4 +754,4 @@ async def run_tool_calling_async(payload: dict[str, Any], executor: Executor, si
         sink=sink,
         max_steps=int(payload.get("max_tool_rounds") or 8),
     )
-    return await agent.run(payload)
+    return await agent.run(payload, check=check, resume_state=resume_state, save_state=save_state)
