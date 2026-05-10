@@ -1,97 +1,44 @@
 # Blender Agent
 
-Blender Agent is a Blender add-on that starts a local browser workspace at
-`http://localhost:6789`. The browser UI talks to an OpenAI-compatible model
-through a built-in zero-dependency tool-calling runtime and lets the model
-inspect and mutate Blender through a trusted local tool surface adapted from
-Blender Lab's official [`blender_mcp`](https://projects.blender.org/lab/blender_mcp).
+![Example](example.png)
 
-## Features
+Blender Agent 是一个 Blender 插件，在 `http://localhost:6789` 启动本地浏览器工作区。通过内置的工具调用运行时，让 AI 模型检查和修改 Blender 场景。
 
-- View3D sidebar panel for starting and stopping the local server
-- Local browser UI with multiple conversations, live run status, tool timeline, and SSE streaming
-- Built-in smolagents-inspired tool-calling run loop for OpenAI-compatible Chat Completions models
-- Blender main-thread scheduling through `bpy.app.timers`
-- Official Blender Lab MCP prompts, bundled API/manual docs, scene summaries, screenshots, navigation helpers, render-to-path tools, and trusted Python execution
-- Localhost-only default binding with explicit opt-in LAN exposure
+## 主要特性
 
-## Project Layout
+- View3D 侧边栏面板控制服务器启停
+- 浏览器 UI 支持多对话、实时状态、工具时间线和 SSE 流式传输
+- 内置 OpenAI 兼容的工具调用运行时
+- 支持 Blender 主线程调度
+- 本地绑定，可选局域网暴露
 
-- `blender_agent/__init__.py`: Blender add-on entry point and class registration
-- `blender_agent/metadata.py`: shared add-on metadata
-- `blender_agent/operators/`: Blender operators for server actions
-- `blender_agent/ui/`: View3D sidebar UI
-- `blender_agent/core/server.py`: local HTTP API, run store, SSE, and server lifecycle
-- `blender_agent/web/`: browser UI assets served by the add-on
-- `blender_agent/agent_runtime.py`: zero-dependency OpenAI-compatible tool-calling runtime
-- `blender_agent/blender_tools.py`: Blender tools and OpenAI tool schemas
-- `blender_agent/blmcp/`: packaged Blender Lab MCP tools, prompts, and bundled docs used at runtime
+## 安装
 
-## Install
+**发布版本：**
+在 Blender 中通过 `Extensions > Install from Disk` 安装发布的 zip 文件。
 
-Install the published release zip from GitHub in Blender via `Extensions >
-Install from Disk`, or load the `blender_agent/` package directly during local
-development.
-
-## Local Development
-
-Symlink the add-on package into Blender's add-ons directory:
-
+**本地开发：**
 ```bash
 ln -sfn "$PWD/blender_agent" "$HOME/Library/Application Support/Blender/5.1/scripts/addons/blender_agent"
 ```
+修改 `5.1` 为你的 Blender 版本。然后在 3D 视口侧边栏选择 `Blender Agent` 标签，点击 `Start Blender Agent`，打开 `http://localhost:6789`。
 
-Change the `5.1` folder for your Blender version. Then open the 3D viewport
-sidebar, choose the `Blender Agent` tab, click `Start Blender Agent`, and open
-`http://localhost:6789`.
+## 模型配置
 
-## Blender Extensions
+在浏览器 UI 中配置（存储在本地存储）：
+- OpenAI 兼容的 API 地址
+- API 密钥
+- 模型名称
+- 最大工具轮次
 
-The add-on includes `blender_agent/blender_manifest.toml` for Blender 4.2+
-extension metadata. Validate and build it from the add-on directory with
-Blender's extension commands:
+## API 端点
 
-```bash
-cd blender_agent
-blender --command extension validate
-blender --command extension build
-```
+- `GET /api/health` - 服务器健康检查
+- `GET /api/tools` - OpenAI 兼容工具模式
+- `POST /api/chat/stream` - 启动代理运行并流式传输 SSE 事件
+- `POST /api/runs` - 启动异步运行用于轮询客户端
+- `GET /api/runs/{id}` - 获取运行状态、步骤、事件和输出
 
-The add-on runtime uses only Python's standard library and Blender's bundled
-Python modules. No external model client package needs to be installed into
-Blender's Python environment for development.
+## 许可证
 
-## Model Configuration
-
-The web UI stores these settings in browser local storage:
-
-- OpenAI-compatible base URL, for example `https://api.openai.com/v1`
-- API key
-- Model name
-- Maximum tool rounds
-
-The add-on does not persist API keys in Blender. Networked model calls respect
-Blender's online access setting when that setting is available.
-
-## Local API
-
-- `GET /api/health`: server health
-- `GET /api/tools`: OpenAI-compatible tool schema
-- `POST /api/chat/stream`: starts an agent run and streams SSE events
-- `POST /api/runs`: starts an async run for polling-based clients
-- `GET /api/runs/{id}`: returns current run status, steps, events, and output
-
-## Security
-
-Blender Agent is a trusted-user local tool. The server binds to `127.0.0.1` by
-default and uses a per-session browser token for the built-in UI. LAN exposure
-is opt-in. The AI tool surface intentionally includes arbitrary Blender Python
-execution for parity with Blender Lab's official MCP server, so only run it with
-model endpoints and prompts you trust.
-
-## Third-party Reuse
-
-This project includes Blender Lab's official `blender_mcp` prompt, tool-code,
-and bundled documentation from `https://projects.blender.org/lab/blender_mcp`.
-Those files are GPL-3.0-or-later and live under `blender_agent/blmcp/` for
-packaged runtime use.
+包含 Blender Lab 官方 `blender_mcp` 代码，详见 `blender_agent/blmcp/` 目录。
