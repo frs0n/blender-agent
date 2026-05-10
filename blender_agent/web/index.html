@@ -33,7 +33,7 @@
       --input: 240 5.9% 90%;
       --primary: 240 5.9% 10%;
       --primary-foreground: 0 0% 98%;
-      --radius: 0.5rem;
+      --radius: 1rem;
     }
     .dark {
       --background: 240 10% 3.9%;
@@ -61,7 +61,7 @@
     .message-user { align-items: flex-end; }
     .message-assistant { align-items: flex-start; }
     .bubble { max-width: 85%; padding: 0.75rem 1rem; border-radius: var(--radius); line-height: 1.5; font-size: 0.95rem; white-space: pre-wrap; }
-    .bubble-user { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-bottom-right-radius: 0.25rem; }
+    .bubble-user { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-bottom-right-radius: 0.5rem; }
     .bubble-assistant { background: transparent; color: hsl(var(--foreground)); padding: 0; font-size: 1rem; }
     .assistant-thinking { display: inline-flex; align-items: center; margin-top: 0.5rem; color: hsl(var(--muted-foreground)); }
     .thinking-dots { display: inline-flex; align-items: center; gap: 0.25rem; }
@@ -73,9 +73,9 @@
       40% { opacity: 1; transform: translateY(-1px); }
     }
     .input-wrapper { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, hsl(var(--background)) 50%, transparent); padding: 1rem; display: flex; justify-content: center; }
-    .input-box { width: 100%; max-width: 48rem; position: relative; display: flex; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 1.5rem; background: hsl(var(--background)); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-    .input-box textarea { width: 100%; background: transparent; border: none; padding: 1rem 9.25rem 1rem 1.5rem; outline: none; resize: none; color: hsl(var(--foreground)); min-height: 56px; max-height: 200px; font-size: 0.95rem; }
-    .input-actions { position: absolute; right: 0.5rem; bottom: 0.5rem; display: flex; align-items: center; }
+    .input-box { width: 100%; max-width: 48rem; position: relative; display: flex; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 2rem; background: hsl(var(--background)); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    .input-box textarea { width: 100%; background: transparent; border: none; padding: 14px 150px 14px 20px; line-height: 24px; outline: none; resize: none; color: hsl(var(--foreground)); min-height: 52px; max-height: 200px; font-size: 0.95rem; }
+    .input-actions { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; }
     .mode-switch { display: inline-flex; align-items: center; gap: 2px; margin-right: 0.4rem; padding: 2px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted)); }
     .mode-option { border: 0; border-radius: 999px; padding: 0.28rem 0.55rem; color: hsl(var(--muted-foreground)); font-size: 0.72rem; font-weight: 600; line-height: 1; cursor: pointer; transition: background 0.16s ease, color 0.16s ease; }
     .mode-option.active { background: hsl(var(--background)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
@@ -86,7 +86,7 @@
     .btn-ghost { padding: 0.5rem; border-radius: var(--radius); cursor: pointer; transition: background 0.2s; }
     .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-ghost:hover { background: hsl(var(--muted)); }
-    .session-item { padding: 0.75rem; border-radius: var(--radius); cursor: pointer; color: hsl(var(--muted-foreground)); transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+    .session-item { flex-shrink: 0; padding: 0.75rem; border-radius: var(--radius); cursor: pointer; color: hsl(var(--muted-foreground)); transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
     .session-item:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
     .session-item.active { background: hsl(var(--muted)); color: hsl(var(--foreground)); font-weight: 500; }
     .topbar { height: 3.5rem; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; border-bottom: 1px solid hsl(var(--border)); }
@@ -120,14 +120,14 @@
 <body class="bg-background text-foreground">
   <div class="app-layout">
     <aside id="sidebar" class="sidebar">
-      <div class="p-4 flex justify-between items-center border-b border-border">
+      <div class="p-4 flex justify-between items-center border-b border-border shrink-0">
         <span class="font-semibold text-sm">Blender Agent</span>
         <button id="newSession" class="btn-ghost" title="New Chat">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         </button>
       </div>
-      <div id="sessions" class="flex-1 overflow-y-auto p-2 flex flex-col gap-1"></div>
-      <div class="p-4 border-t border-border flex flex-col gap-2">
+      <div id="sessions" class="flex-1 overflow-y-auto min-h-0 p-2 flex flex-col gap-1"></div>
+      <div class="p-4 border-t border-border flex flex-col gap-2 shrink-0">
         <button id="openSettings" class="text-sm text-muted-foreground hover:text-foreground text-left px-2 py-1">Settings</button>
         <button id="clearSession" class="text-sm text-red-500 hover:text-red-600 text-left px-2 py-1">Clear History</button>
       </div>
