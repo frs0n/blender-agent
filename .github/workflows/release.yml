@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,18 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - blender_version: "4.2.10"
-            blender_major: "4.2"
-            blender_version_min: "4.2.0"
-            blender_version_max: "4.3.99"
-            version_label: "4.2-4.3"
-          - blender_version: "4.4.3"
-            blender_major: "4.4"
-            blender_version_min: "4.4.0"
-            version_label: "4.4+"
 
     steps:
       - uses: actions/checkout@v4
@@ -32,82 +19,41 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build tooling
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install tomli-w
-
-      - name: Build Blender extension artifacts
+      - name: Build Blender extension
         run: |
           python - <<'PY'
           from __future__ import annotations
-
-          import os
-          import pathlib
-          import shutil
-          import subprocess
-          import tarfile
-          import tempfile
-          import tomllib
-
-          import tomli_w
-
-          BLENDER_VERSION = os.environ["BLENDER_VERSION"]
-          BLENDER_MAJOR = os.environ["BLENDER_MAJOR"]
-          BLENDER_VERSION_MIN = os.environ["BLENDER_VERSION_MIN"]
-          VERSION_LABEL = os.environ["VERSION_LABEL"]
+          import pathlib, subprocess, tarfile, tempfile, tomllib, os
 
           root = pathlib.Path.cwd()
-          source = root / "blender_agent"
+          src = root / "blender_agent"
           dist = root / "dist"
-          work = pathlib.Path(tempfile.mkdtemp(prefix="blender_agent_release_"))
-          staging = work / "blender_agent"
-          shutil.copytree(source, staging, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"))
-
-          manifest = tomllib.loads((staging / "blender_manifest.toml").read_text(encoding="utf-8"))
-          manifest["blender_version_min"] = BLENDER_VERSION_MIN
-          blender_version_max = os.environ.get("BLENDER_VERSION_MAX")
-          if blender_version_max:
-              manifest["blender_version_max"] = blender_version_max
-          (staging / "blender_manifest.toml").write_text(tomli_w.dumps(manifest), encoding="utf-8")
-
           dist.mkdir(exist_ok=True)
-          blender_root = work / "blender"
-          blender_root.mkdir(parents=True, exist_ok=True)
-          blender_bin = blender_root / f"blender-{BLENDER_VERSION}-linux-x64" / "blender"
-          if not blender_bin.exists():
-              archive = work / "blender.tar.xz"
-              url = f"https://download.blender.org/release/Blender{BLENDER_MAJOR}/blender-{BLENDER_VERSION}-linux-x64.tar.xz"
-              subprocess.check_call(["curl", "-L", url, "-o", str(archive)])
-              with tarfile.open(archive, mode="r:xz") as tar:
-                  tar.extractall(blender_root)
-          subprocess.check_call(
-              [
-                  str(blender_bin),
-                  "--command",
-                  "extension",
-                  "build",
-                  "--source-dir",
-                  str(staging),
-                  "--output-dir",
-                  str(dist),
-                  "--split-platforms",
-              ]
+
+          manifest = tomllib.loads((src / "blender_manifest.toml").read_text())
+          blender_ver = manifest["blender_version_min"]
+          parts = blender_ver.split(".")
+          major_minor = f"{parts[0]}.{parts[1]}"
+
+          work = pathlib.Path(tempfile.mkdtemp())
+          archive = work / "blender.tar.xz"
+          url = (
+              f"https://download.blender.org/release/Blender{major_minor}/"
+              f"blender-{blender_ver}-linux-x64.tar.xz"
           )
+          subprocess.check_call(["curl", "-L", "--fail", url, "-o", str(archive)])
+          with tarfile.open(archive, mode="r:xz") as tar:
+              tar.extractall(work)
 
-          for zip_path in dist.glob("*.zip"):
-              stem = zip_path.stem
-              new_name = dist / f"{stem}-blender-{VERSION_LABEL}.zip"
-              zip_path.rename(new_name)
+          blender_bin = work / f"blender-{blender_ver}-linux-x64" / "blender"
+          subprocess.check_call([
+              str(blender_bin), "--command", "extension", "build",
+              "--source-dir", str(src),
+              "--output-dir", str(dist),
+          ])
           PY
-        env:
-          BLENDER_VERSION: ${{ matrix.blender_version }}
-          BLENDER_MAJOR: ${{ matrix.blender_major }}
-          BLENDER_VERSION_MIN: ${{ matrix.blender_version_min }}
-          BLENDER_VERSION_MAX: ${{ matrix.blender_version_max }}
-          VERSION_LABEL: ${{ matrix.version_label }}
 
-      - name: Upload release artifacts
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
