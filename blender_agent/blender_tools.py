@@ -532,7 +532,98 @@ def _doc_paragraphs(text: str) -> list[str]:
     return [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
 
 
-def _search_docs(scope: str, query: str, max_results: int = 20, context: int = 0, index: int | None = None) -> dict[str, Any]:
+# RST directive names that define addressable API members.
+_DEFINITION_DIRECTIVES = (
+    "attribute", "class", "classmethod", "data", "decorator",
+    "exception", "function", "method", "property", "staticmethod",
+)
+_DEF_RE = re.compile(
+    r"^\s*\.\. (?:" + "|".join(_DEFINITION_DIRECTIVES) + r")::\s*(.+)$",
+    re.MULTILINE,
+)
+
+
+def _rst_list_definitions(text: str) -> list[str]:
+    names: list[str] = []
+    for m in _DEF_RE.finditer(text):
+        raw = m.group(1).strip()
+        name = raw.split("(", 1)[0].strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def _rst_find_definition(text: str, name: str) -> str | None:
+    lines = text.split("\n")
+    name_lower = name.lower()
+    for i, line in enumerate(lines):
+        m = _DEF_RE.match(line)
+        if not m:
+            continue
+        sig_name = m.group(1).strip().split("(", 1)[0].strip()
+        if sig_name.lower() != name_lower:
+            continue
+        block_start = i
+        block_end = i + 1
+        while block_end < len(lines):
+            ln = lines[block_end]
+            if not ln.strip():
+                block_end += 1
+                continue
+            if _DEF_RE.match(ln):
+                break
+            if ln[0] in (" ", "\t"):
+                block_end += 1
+                continue
+            block_end += 1
+        while block_end > block_start and not lines[block_end - 1].strip():
+            block_end -= 1
+        return "\n".join(lines[block_start:block_end])
+    return None
+
+
+def _list_direct_children(api_root: Path, identifier: str) -> list[str]:
+    prefix = identifier + "."
+    expected_dot = prefix.count(".")
+    children: list[str] = []
+    for entry in api_root.iterdir():
+        if not entry.name.endswith(".rst") or not entry.name.startswith(prefix):
+            continue
+        stem = entry.name[:-4]
+        if stem.count(".") != expected_dot:
+            continue
+        children.append(stem)
+    children.sort()
+    return children
+
+
+def _list_identifiers_containing(api_root: Path, identifier: str) -> list[str]:
+    buckets: list[set[tuple[str, ...]]] = []
+    for entry in api_root.iterdir():
+        if not entry.name.endswith(".rst"):
+            continue
+        parts = tuple(entry.name[:-4].split("."))
+        if identifier not in parts:
+            continue
+        while len(buckets) <= len(parts):
+            buckets.append(set())
+        buckets[len(parts)].add(parts)
+    for depth in range(len(buckets) - 1, 1, -1):
+        buckets[depth] = {
+            t for t in buckets[depth]
+            if not any(t[:k] in buckets[k] for k in range(1, depth))
+        }
+    return sorted(".".join(t) for bucket in buckets for t in bucket)
+
+
+def _extract_signature(paragraph: str) -> str:
+    for line in paragraph.split("\n"):
+        if _DEF_RE.match(line):
+            return line.strip()
+    return ""
+
+
+def _search_docs(scope: str, query: str, max_results: int = 20, context: int = 0, index: int | None = None, compact: bool = False) -> dict[str, Any]:
     tokens = [token.lower() for token in re.split(r"\s+", query.strip()) if token.strip()]
     if not tokens:
         return {"query": query, "scope": scope, "hits": [], "truncated": False}
@@ -546,18 +637,26 @@ def _search_docs(scope: str, query: str, max_results: int = 20, context: int = 0
             haystack = f"{rel}\n{paragraph}".lower()
             if not all(token in haystack for token in tokens):
                 continue
-            start = max(0, paragraph_index - max(0, context))
-            end = min(len(paragraphs), paragraph_index + max(0, context) + 1)
             score = sum(haystack.count(token) for token in tokens)
-            hits.append(
-                {
+            if compact:
+                sig = _extract_signature(paragraph)
+                hits.append({
+                    "path": rel,
+                    "signature": sig,
+                    "breadcrumb": "",
+                    "index": len(hits),
+                    "score": score,
+                })
+            else:
+                start = max(0, paragraph_index - max(0, context))
+                end = min(len(paragraphs), paragraph_index + max(0, context) + 1)
+                hits.append({
                     "path": rel,
                     "text": "\n\n".join(paragraphs[start:end]),
                     "breadcrumb": "",
                     "index": len(hits),
                     "score": score,
-                }
-            )
+                })
     hits.sort(key=lambda item: item["score"], reverse=True)
     for idx, hit in enumerate(hits):
         hit["index"] = idx
@@ -567,34 +666,85 @@ def _search_docs(scope: str, query: str, max_results: int = 20, context: int = 0
     return {"query": query, "scope": scope, "hits": hits[:max_results], "truncated": truncated}
 
 
-def search_api_docs(query: str, max_results: int = 20, context: int = 0, index: int | None = None) -> dict[str, Any]:
-    return _search_docs("api", query, max_results, context, index)
+def search_api_docs(query: str, max_results: int = 20, context: int = 0, index: int | None = None, compact: bool = False) -> dict[str, Any]:
+    return _search_docs("api", query, max_results, context, index, compact=compact)
 
 
-def search_manual_docs(query: str, max_results: int = 20, context: int = 0, index: int | None = None) -> dict[str, Any]:
-    return _search_docs("manual", query, max_results, context, index)
+def search_manual_docs(query: str, max_results: int = 20, context: int = 0, index: int | None = None, compact: bool = False) -> dict[str, Any]:
+    return _search_docs("manual", query, max_results, context, index, compact=compact)
 
 
 def get_python_api_docs(identifier: str) -> dict[str, Any]:
     api_root = OFFICIAL_DATA_ROOT / "api"
+    api_resolved = api_root.resolve()
     safe = identifier.strip().strip("/").removesuffix(".rst")
-    path = (api_root / f"{safe}.rst").resolve()
-    if not str(path).startswith(str(api_root.resolve())) or not path.exists():
-        matches = [
-            p.stem for p in _iter_doc_paths("api")
-            if safe.lower() in p.stem.lower()
-        ][:50]
-        return {"status": "not_found", "identifier": identifier, "matches": matches}
-    text = path.read_text(encoding="utf-8", errors="replace")
-    threshold = 32 * 1024
-    if len(text) > threshold:
-        definitions = re.findall(r"^\.\. (?:class|function|method|attribute|data)::\s+(.+)$", text, re.MULTILINE)
-        text = (
-            f"File too large to inline ({len(text) // 1024} KB, threshold {threshold // 1024} KB); "
-            f"definitions listed below. Query individual members as `{safe}.<name>`:\n\n"
-            + "\n".join(f"- {definition}" for definition in definitions[:300])
+    _SUMMARY_THRESHOLD = 32 * 1024
+
+    def _resolve(stem: str) -> Path | None:
+        p = (api_root / f"{stem}.rst").resolve()
+        if not str(p).startswith(str(api_resolved)) or not p.exists():
+            return None
+        return p
+
+    def _read_file(p: Path, stem: str) -> dict[str, Any]:
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if len(text) <= _SUMMARY_THRESHOLD:
+            return {"kind": "exact", "found": True, "identifier": safe, "path": _doc_rel(p), "text": text}
+        definition = None
+        parts = safe.split(".")
+        for strip_count in range(1, len(parts)):
+            tail = ".".join(parts[-strip_count:])
+            hit = _rst_find_definition(text, tail)
+            if hit is not None:
+                definition = hit
+                break
+        if definition is not None:
+            return {"kind": "definition", "found": True, "identifier": safe, "path": _doc_rel(p), "text": definition}
+        defs = _rst_list_definitions(text)
+        summary = (
+            f"File too large to inline ({len(text) // 1024} KB, threshold {_SUMMARY_THRESHOLD // 1024} KB); "
+            f"definitions listed below. Query individual members as `{stem}.<name>`:\n\n"
+            + "\n".join(f"- {d}" for d in defs[:300])
         )
-    return {"status": "ok", "identifier": safe, "path": _doc_rel(path), "text": text}
+        return {"kind": "exact", "found": True, "identifier": safe, "path": _doc_rel(p), "text": summary}
+
+    # 1. Exact file match.
+    if (exact := _resolve(safe)) is not None:
+        return _read_file(exact, safe)
+
+    # 2. Intra-file definition lookup: strip trailing components to find
+    #    parent RST, then search for the definition inside it.
+    parts = safe.split(".")
+    for strip_count in range(1, len(parts)):
+        prefix = ".".join(parts[:-strip_count])
+        tail = ".".join(parts[-strip_count:])
+        parent = _resolve(prefix)
+        if parent is None:
+            continue
+        text = parent.read_text(encoding="utf-8", errors="replace")
+        hit = _rst_find_definition(text, tail)
+        if hit is not None:
+            return {"kind": "definition", "found": True, "identifier": safe, "path": _doc_rel(parent), "text": hit}
+        defs = _rst_list_definitions(text)
+        children = _list_direct_children(api_root, prefix)
+        tail_chars = set(tail.lower())
+        similar = [c for c in children if tail_chars.issubset(c.rsplit(".", 1)[-1].lower())]
+        return {
+            "kind": "partial", "found": False, "identifier": safe,
+            "parent": prefix, "available": defs, "submodules": similar[:50],
+        }
+
+    # 3. Namespace: `<identifier>.<child>.rst` files exist.
+    children = _list_direct_children(api_root, safe)
+    if children:
+        return {"kind": "namespace", "found": True, "identifier": safe, "submodules": children}
+
+    # 4. "Did you mean" fallback.
+    suggestions = _list_identifiers_containing(api_root, safe)
+    if suggestions:
+        return {"kind": "suggestions", "found": False, "identifier": safe, "suggestions": suggestions[:50]}
+
+    return {"kind": "missing", "found": False, "identifier": safe}
 
 
 def get_objects_summary() -> dict[str, Any]:
@@ -733,6 +883,7 @@ _DOC_SEARCH_PARAMS = {
     "max_results": {"type": "integer", "default": 20},
     "context": {"type": "integer", "default": 0},
     "index": {"type": ["integer", "null"], "default": None},
+    "compact": {"type": "boolean", "default": False},
 }
 
 
@@ -746,9 +897,9 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
     _tool("get_blendfile_summary_usage_guess", "Guess the primary use-cases of the current blend file, scored 0-100 with certainty."),
     _tool("get_objects_summary", "Return the scene's collection hierarchy and objects: name, type, parent, data name, selection, and visibility."),
     _tool("get_object_detail_summary", "Return a structured summary of the object identified by name.", {"name": _STRING}, ["name"]),
-    _tool("get_python_api_docs", "Return bundled Blender Python API docs for an identifier, or list possible matches.", {"identifier": _STRING}, ["identifier"]),
-    _tool("search_api_docs", "Full-text search over bundled Blender Python API RST docs.", _DOC_SEARCH_PARAMS, ["query"]),
-    _tool("search_manual_docs", "Full-text search over bundled Blender Manual RST docs.", _DOC_SEARCH_PARAMS, ["query"]),
+    _tool("get_python_api_docs", "Return bundled Blender Python API docs for an identifier. Supports dotted names (e.g. bpy.ops.mesh.primitive_cube_add) - searches inside parent RST files for specific definitions.", {"identifier": _STRING}, ["identifier"]),
+    _tool("search_api_docs", "Full-text search over bundled Blender Python API RST docs. Use compact=true for signature-only results (fewer tokens, more hits).", _DOC_SEARCH_PARAMS, ["query"]),
+    _tool("search_manual_docs", "Full-text search over bundled Blender Manual RST docs. Use compact=true for signature-only results (fewer tokens, more hits).", _DOC_SEARCH_PARAMS, ["query"]),
     _tool("get_screenshot_of_window_as_json", "Return a JSON description of the Blender window layout, areas, active object, and selection."),
     _tool("get_screenshot_of_window_as_image", "Take a screenshot of the Blender window and return an image payload.", {"size_limit_in_bytes": _INT}),
     _tool("get_screenshot_of_area_as_image", "Take a screenshot of a single Blender area and return an image payload.", {"area_ui_type": _STRING, "size_limit_in_bytes": _INT}, ["area_ui_type"]),
