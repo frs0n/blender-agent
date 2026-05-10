@@ -292,7 +292,7 @@ def _tool_result_visual_message(tool_name: str, result: dict[str, Any]) -> dict[
         "content": [
             {
                 "type": "text",
-                "text": f"{label} ({width}x{height}, {method}). Use it to visually verify the scene.",
+                "text": f"{label} ({width}x{height}, {method}). Visually inspect this screenshot to verify the current step completed correctly and the scene looks as expected.",
             },
             {"type": "image_url", "image_url": {"url": image_url}},
         ],
@@ -345,6 +345,8 @@ def _system_prompt(mode: str) -> str:
         mode_prompt = (
             "\n## Agent Mode\n"
             "- You are in Agent mode. You may inspect and modify Blender using the provided tools.\n"
+            "- After every meaningful action (creating, moving, modifying, deleting objects, etc.), call `get_viewport_screenshot` to visually verify the result.\n"
+            "- Before calling `final_answer`, take a final screenshot to confirm the goal has been achieved.\n"
         )
     return (
         blender_tools.SYSTEM_PROMPT
@@ -352,7 +354,8 @@ def _system_prompt(mode: str) -> str:
         + "\n## Tool Calling Runtime\n"
         + "- You are running in a ReAct-style tool-calling loop: action, observation, repeat.\n"
         + "- Always call a tool when scene state or Blender changes are needed.\n"
-        + "- When the task is complete, call final_answer with a short summary for the user.\n"
+        + "- After every scene-modifying step, call get_viewport_screenshot and visually inspect the result before continuing.\n"
+        + "- When the task is complete, take a final screenshot, then call final_answer with a short summary for the user.\n"
         + "- Do not call final_answer together with any other tool in the same model turn.\n"
     )
 
