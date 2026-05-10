@@ -738,7 +738,7 @@ _DOC_SEARCH_PARAMS = {
 
 OPENAI_TOOLS: list[dict[str, Any]] = [
     _tool("execute_blender_code", "Execute Python code in the active Blender session. Assign a JSON-serialisable dict to `result` to return data.", {"code": _STRING}, ["code"]),
-    _tool("execute_blender_code_for_cli", "Execute Python code in a background Blender process for a specific .blend file. Assign a JSON-serialisable dict to `result` to return data.", {"blend_file": _STRING, "code": _STRING}, ["blend_file", "code"]),
+    _tool("execute_blender_code_for_cli", "Execute Python code in a background Blender process for a specific .blend file. The blend_file must be an absolute path. Assign a JSON-serialisable dict to `result` to return data.", {"blend_file": _STRING, "code": _STRING}, ["blend_file", "code"]),
     _tool("get_blendfile_summary_path_info", "Simple/fast access to the blend file's path, save status, age, and backups."),
     _tool("get_blendfile_summary_datablocks", "Return a summary of data-block counts, active workspace, and render engine."),
     _tool("get_blendfile_summary_missing_files", "Report external file references that are missing from disk."),
@@ -755,7 +755,7 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
     _tool("jump_to_tab_by_name", "Switch the active workspace tab to name.", {"name": _STRING}, ["name"]),
     _tool("jump_to_tab_by_space_type", "Switch to a workspace whose main area matches space_type.", {"space_type": _STRING, "allow_edits": _BOOL}, ["space_type"]),
     _tool("jump_to_view3d_object_by_name", "Move the 3D viewport to focus on an object by name.", {"name": _STRING, "allow_edits": _BOOL}, ["name"]),
-    _tool("jump_to_view3d_object_data_by_name", "Move the 3D viewport to the object whose data block matches name.", {"name": _STRING, "allow_edits": _BOOL}, ["name"]),
+    _tool("jump_to_view3d_object_data_by_name", "Move the 3D viewport to the object whose data-block name matches name (e.g. mesh data name, not object name).", {"name": _STRING, "allow_edits": _BOOL}, ["name"]),
     _tool("render_viewport_to_path", "Render the current scene to output_path using current render settings.", {"output_path": _STRING}, ["output_path"]),
     _tool("render_thumbnail_to_path", "Render a small, low-quality thumbnail to output_path.", {"output_path": _STRING}, ["output_path"]),
 ]

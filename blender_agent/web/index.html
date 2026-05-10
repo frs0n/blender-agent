@@ -153,7 +153,6 @@
             <button id="primaryAction" class="icon-btn primary-action" type="button" title="Send Message">
               <svg id="primaryActionSendIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               <svg id="primaryActionPauseIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
-              <svg id="primaryActionResumeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><polygon points="8,5 19,12 8,19"></polygon></svg>
               <svg id="primaryActionSpinnerIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none; animation: spin 0.7s linear infinite;"><circle cx="12" cy="12" r="8" stroke-opacity="0.25"></circle><path d="M20 12a8 8 0 0 0-8-8"></path></svg>
             </button>
           </div>
@@ -434,29 +433,18 @@
       var s = session(false);
       return state.currentRun || (s ? s.runs[0] : null) || null;
     }
-    function isRunPaused() {
-      var run = currentRun();
-      return run && (run.status === "paused");
-    }
     function updatePrimaryAction() {
       var prompt = document.getElementById("prompt");
       var btn = document.getElementById("primaryAction");
       var sendIcon = document.getElementById("primaryActionSendIcon");
       var pauseIcon = document.getElementById("primaryActionPauseIcon");
-      var resumeIcon = document.getElementById("primaryActionResumeIcon");
       var spinnerIcon = document.getElementById("primaryActionSpinnerIcon");
       var hasText = !!prompt.value.trim();
       var active = state.isStreaming;
-      var paused = isRunPaused();
-      btn.disabled = state.pausePending || (paused && state.pausePending);
-      if (state.pausePending || paused) {
-        btn.title = state.pausePending ? "Pausing..." : "Resume Agent";
-      } else {
-        btn.title = active ? "Pause Agent" : "Send Message";
-      }
-      sendIcon.style.display = (active || state.pausePending || paused) ? "none" : "";
-      pauseIcon.style.display = (active && !state.pausePending) ? "" : "none";
-      resumeIcon.style.display = (paused && !state.pausePending) ? "" : "none";
+      btn.disabled = state.pausePending || (!active && !hasText);
+      btn.title = state.pausePending ? "Pausing..." : active ? "Pause Model" : "Send Message";
+      sendIcon.style.display = active || state.pausePending ? "none" : "";
+      pauseIcon.style.display = active && !state.pausePending ? "" : "none";
       spinnerIcon.style.display = state.pausePending ? "" : "none";
     }
     function render() { renderSessions(); renderChat(); renderOperations(); updatePrimaryAction(); save(); }
@@ -632,137 +620,6 @@
       }
     }
 
-    async function resumeRun(run, assistantMessage) {
-      state.isStreaming = true;
-      state.pausePending = false;
-      assistantMessage._streaming = true;
-      assistantMessage._paused = false;
-      if (assistantMessage.toolCalls) {
-        for (var i = 0; i < assistantMessage.toolCalls.length; i++) {
-          if (assistantMessage.toolCalls[i].status === "paused") {
-            assistantMessage.toolCalls[i].status = "running";
-          }
-        }
-      }
-      render();
-      var res = await fetch("/api/runs/" + run.id + "/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Blender-Agent-Token": token }
-      });
-      if (!res.ok) {
-        var data = await res.json().catch(function() { return {}; });
-        throw new Error(data.error || res.statusText);
-      }
-      var reader = res.body.getReader();
-      state.streamReader = reader;
-      state.activeAssistantMessage = assistantMessage;
-      var decoder = new TextDecoder();
-      var buffer = "";
-      try {
-        while (true) {
-          var result = await reader.read();
-          if (result.done) break;
-          buffer += decoder.decode(result.value, { stream: true });
-          var NN = String.fromCharCode(10) + String.fromCharCode(10);
-          var N = String.fromCharCode(10);
-          var parts = buffer.split(NN);
-          buffer = parts.pop();
-          for (var pi = 0; pi < parts.length; pi++) {
-            var lines = parts[pi].split(N);
-            var dataLine = null;
-            for (var li = 0; li < lines.length; li++) {
-              if (lines[li].indexOf("data: ") === 0) { dataLine = lines[li]; break; }
-            }
-            if (!dataLine) continue;
-            var event;
-            try { event = JSON.parse(dataLine.slice(6)); }
-            catch (err) { throw new Error("Malformed stream event: " + err.message); }
-            if (event.type === "run") { upsertRun(event.run); }
-            if (event.type === "thinking") { assistantMessage._streaming = true; assistantMessage._paused = false; renderChat(); }
-            if (event.type === "delta") { assistantMessage.content += event.content || ""; assistantMessage._retrying = false; renderChat(); }
-            if (event.type === "retry") { assistantMessage.content = event.content || ""; assistantMessage._streaming = true; assistantMessage._retrying = true; renderChat(); }
-            if (event.type === "tool_call") {
-              if (!assistantMessage.toolCalls) assistantMessage.toolCalls = [];
-              assistantMessage.toolCalls.push({ name: event.tool_name || "tool", status: "running", detail: "", _open: false, _startedAt: Date.now() });
-              renderChat(); renderOperations();
-            }
-            if (event.type === "tool_result") {
-              if (!assistantMessage.toolCalls) assistantMessage.toolCalls = [];
-              var tc = null;
-              for (var j = assistantMessage.toolCalls.length - 1; j >= 0; j--) {
-                if (assistantMessage.toolCalls[j].status === "running") { tc = assistantMessage.toolCalls[j]; break; }
-              }
-              if (!tc) { tc = { name: event.tool_name || "tool", status: "done", detail: "", _open: false }; assistantMessage.toolCalls.push(tc); }
-              tc.status = "done";
-              tc.duration = tc._startedAt ? ((Date.now() - tc._startedAt) / 1000).toFixed(1) : null;
-              var shot = event.result && event.result.result;
-              if (isImageTool(event.tool_name) && shot && shot.preview_data_url) {
-                var label = event.tool_name === "render_scene_image" ? "Render captured" : "Screenshot captured";
-                var method = shot.capture_method || "screenshot";
-                tc.detail = label + " (" + (shot.preview_width || shot.width) + "x" + (shot.preview_height || shot.height) + ", " + method + ")";
-                tc.image = shot.preview_data_url;
-              } else {
-                tc.detail = typeof event.result === "object" ? event.result : String(event.result);
-              }
-              renderChat(); renderOperations();
-            }
-            if (event.type === "tool_call" || event.type === "tool_result" || event.type === "step" || event.type === "thinking" || event.type === "retry") { upsertRun(event.run); save(); }
-            if (event.type === "done") {
-              upsertRun(event.run); assistantMessage.content = event.content || assistantMessage.content;
-              assistantMessage._streaming = false; assistantMessage._paused = false; assistantMessage._retrying = false;
-              state.isStreaming = false; state.pausePending = false;
-              if (assistantMessage.toolCalls) {
-                for (var di = 0; di < assistantMessage.toolCalls.length; di++) {
-                  if (assistantMessage.toolCalls[di].status === "running") {
-                    assistantMessage.toolCalls[di].status = "done";
-                    assistantMessage.toolCalls[di].duration = assistantMessage.toolCalls[di]._startedAt ? ((Date.now() - assistantMessage.toolCalls[di]._startedAt) / 1000).toFixed(1) : null;
-                  }
-                }
-              }
-              render(); await reader.cancel().catch(function(){}); return;
-            }
-            if (event.type === "paused") {
-              upsertRun(event.run); assistantMessage._streaming = false; assistantMessage._paused = true; assistantMessage._retrying = false;
-              state.isStreaming = false; state.pausePending = false;
-              if (assistantMessage.toolCalls) {
-                for (var pi0 = 0; pi0 < assistantMessage.toolCalls.length; pi0++) {
-                  if (assistantMessage.toolCalls[pi0].status === "running") {
-                    assistantMessage.toolCalls[pi0].status = "paused";
-                    assistantMessage.toolCalls[pi0].duration = assistantMessage.toolCalls[pi0]._startedAt ? ((Date.now() - assistantMessage.toolCalls[pi0]._startedAt) / 1000).toFixed(1) : null;
-                  }
-                }
-              }
-              render(); await reader.cancel().catch(function(){}); return;
-            }
-            if (event.type === "stopped") {
-              upsertRun(event.run); assistantMessage._streaming = false; assistantMessage._paused = false; assistantMessage._retrying = false;
-              state.isStreaming = false; state.pausePending = false;
-              if (assistantMessage.toolCalls) {
-                for (var si = 0; si < assistantMessage.toolCalls.length; si++) {
-                  if (assistantMessage.toolCalls[si].status === "running") assistantMessage.toolCalls[si].status = "error";
-                }
-              }
-              render(); await reader.cancel().catch(function(){}); return;
-            }
-            if (event.type === "error") {
-              assistantMessage.content = "Error: " + event.error; assistantMessage._streaming = false;
-              state.isStreaming = false; state.pausePending = false;
-              if (assistantMessage.toolCalls) {
-                for (var ei = 0; ei < assistantMessage.toolCalls.length; ei++) {
-                  if (assistantMessage.toolCalls[ei].status === "running") assistantMessage.toolCalls[ei].status = "error";
-                }
-              }
-              assistantMessage._retrying = false;
-              render(); await reader.cancel().catch(function(){}); return;
-            }
-          }
-        }
-      } finally {
-        state.streamReader = null;
-        state.activeAssistantMessage = null;
-      }
-    }
-
     async function submitPrompt(event) {
       event.preventDefault();
       var prompt = document.getElementById("prompt");
@@ -836,22 +693,6 @@
           state.pausePending = false;
           render();
         });
-        return;
-      }
-      if (isRunPaused()) {
-        var run = currentRun();
-        var s = session(false);
-        var msg = state.activeAssistantMessage || (s && s.messages.length > 0 && s.messages[s.messages.length - 1].role === "assistant" ? s.messages[s.messages.length - 1] : null);
-        if (!run || !msg) return;
-        try {
-          await resumeRun(run, msg);
-        } catch (err) {
-          msg.content = "Resume error: " + err.message;
-          msg._streaming = false;
-          msg._paused = false;
-          state.isStreaming = false;
-          render();
-        }
         return;
       }
       document.getElementById("form").requestSubmit();

@@ -44,8 +44,8 @@ def register(mcp: FastMCP) -> None:
         """
         Execute Python code in a background Blender process.
 
-        Opens *blend_file* with ``blender --background`` and runs *code*.
-        Assign a dict to ``result`` to return data.
+        Opens *blend_file* (absolute path required) with ``blender --background``
+        and runs *code*. Assign a dict to ``result`` to return data.
         """
         # LLM-generated code may return non-JSON-serializable values
         # (e.g. Blender objects), handled by `run_blender_cli` via `default=repr`.

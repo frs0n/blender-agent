@@ -33,7 +33,8 @@ def register(mcp: FastMCP) -> None:
         allow_edits: bool = False,
     ) -> dict[str, object]:
         """
-        Move the 3D viewport to the object whose data block matches *name*.
+        Move the 3D viewport to the object whose data-block name matches *name*
+        (e.g. mesh data name, not object name).
 
         If *allow_edits* is True the object may be un-hidden and its
         collections enabled to make it visible.
