@@ -984,6 +984,28 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
     }, ["primitive_type"]),
 ]
 
+ASK_TOOL_NAMES = {
+    "get_blendfile_summary_path_info",
+    "get_blendfile_summary_datablocks",
+    "get_blendfile_summary_missing_files",
+    "get_blendfile_summary_of_linked_libraries",
+    "get_blendfile_summary_usage_guess",
+    "get_objects_summary",
+    "get_object_detail_summary",
+    "get_python_api_docs",
+    "search_api_docs",
+    "search_manual_docs",
+    "get_screenshot_of_window_as_json",
+    "get_screenshot_of_window_as_image",
+    "get_screenshot_of_area_as_image",
+}
+
+
+def tools_for_mode(mode: str) -> list[dict[str, Any]]:
+    if mode == "ask":
+        return [tool for tool in OPENAI_TOOLS if tool["function"]["name"] in ASK_TOOL_NAMES]
+    return OPENAI_TOOLS
+
 
 SYSTEM_PROMPT = _official_prompt() or """You have access to Blender tools to interact with a Blender scene directly.
 You are running inside Blender Agent's embedded local runtime.

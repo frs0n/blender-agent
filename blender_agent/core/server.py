@@ -10,6 +10,7 @@ import threading
 import time
 import traceback
 import socket
+from urllib.parse import parse_qs, urlparse
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -278,8 +279,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(html)
             return
-        if self.path == "/api/tools":
-            self._send_json(200, {"tools": blender_tools.OPENAI_TOOLS})
+        parsed_path = urlparse(self.path)
+        if parsed_path.path == "/api/tools":
+            query = parse_qs(parsed_path.query)
+            mode = "ask" if (query.get("mode") or ["agent"])[0] == "ask" else "agent"
+            self._send_json(200, {"mode": mode, "tools": blender_tools.tools_for_mode(mode)})
             return
         if self.path == "/api/health":
             self._send_json(200, {"status": "ok", "time": time.time()})

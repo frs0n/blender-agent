@@ -320,13 +320,35 @@ def _final_answer_tool_schema() -> dict[str, Any]:
     }
 
 
-def _runtime_tools() -> list[dict[str, Any]]:
-    return [*blender_tools.OPENAI_TOOLS, _final_answer_tool_schema()]
+def _normalise_mode(mode: Any) -> str:
+    return "ask" if str(mode or "").lower() == "ask" else "agent"
 
 
-def _system_prompt() -> str:
+def _runtime_tools(mode: str) -> list[dict[str, Any]]:
+    return [*blender_tools.tools_for_mode(mode), _final_answer_tool_schema()]
+
+
+def _allowed_tool_names(mode: str) -> set[str]:
+    return {tool["function"]["name"] for tool in _runtime_tools(mode)}
+
+
+def _system_prompt(mode: str) -> str:
+    mode_prompt = ""
+    if mode == "ask":
+        mode_prompt = (
+            "\n## Ask Mode\n"
+            "- You are in Ask mode. Answer Blender questions and inspect/read scene or documentation when helpful.\n"
+            "- Do not modify the Blender scene, data-blocks, files, UI state, or render outputs.\n"
+            "- If the user asks you to create, edit, delete, align, snap, render to a path, or execute code, explain that Agent mode is required.\n"
+        )
+    else:
+        mode_prompt = (
+            "\n## Agent Mode\n"
+            "- You are in Agent mode. You may inspect and modify Blender using the provided tools.\n"
+        )
     return (
         blender_tools.SYSTEM_PROMPT
+        + mode_prompt
         + "\n## Tool Calling Runtime\n"
         + "- You are running in a ReAct-style tool-calling loop: action, observation, repeat.\n"
         + "- Always call a tool when scene state or Blender changes are needed.\n"
@@ -549,16 +571,18 @@ class OpenAICompatibleModel:
 class ToolCallingAgent:
     """Small smolagents-inspired ToolCallingAgent specialized for Blender."""
 
-    def __init__(self, model: OpenAICompatibleModel, executor: Executor, sink: Sink, max_steps: int):
+    def __init__(self, model: OpenAICompatibleModel, executor: Executor, sink: Sink, max_steps: int, mode: str):
         self.model = model
         self.executor = executor
         self.sink = sink
         self.max_steps = max(1, max_steps)
+        self.mode = _normalise_mode(mode)
+        self.allowed_tool_names = _allowed_tool_names(self.mode)
         self.memory: list[ActionStep] = []
         self.accepts_image_input = True
 
     def initial_messages(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        messages = [{"role": "system", "content": _system_prompt()}]
+        messages = [{"role": "system", "content": _system_prompt(self.mode)}]
         messages.extend(normalise_messages(payload.get("messages") or []))
         return messages
 
@@ -581,12 +605,12 @@ class ToolCallingAgent:
             self.sink.emit({"type": "thinking", "status": "start", "turn": step_number})
             action_step = ActionStep(step_number=step_number, model_input_messages=json.loads(json.dumps(messages)))
             try:
-                completion = self.model.generate_stream(messages, _runtime_tools(), self.sink, check)
+                completion = self.model.generate_stream(messages, _runtime_tools(self.mode), self.sink, check)
             except Exception as exc:
                 if isinstance(exc, (RunPausedError, RunStoppedError)):
                     raise
                 if self._retry_without_images(messages, exc):
-                    completion = self.model.generate_stream(messages, _runtime_tools(), self.sink, check)
+                    completion = self.model.generate_stream(messages, _runtime_tools(self.mode), self.sink, check)
                 else:
                     self.sink.finish_step(llm_step, "failed", "Model request failed")
                     raise
@@ -654,6 +678,11 @@ class ToolCallingAgent:
     async def execute_tool_call(self, tool_call: ToolCall, check: Callable[[], None] | None = None) -> dict[str, Any]:
         tool_name = tool_call.name
         tool_args = tool_call.arguments if isinstance(tool_call.arguments, dict) else {}
+        if tool_name not in self.allowed_tool_names:
+            return {
+                "status": "error",
+                "message": f"Tool {tool_name!r} is not available in {self.mode} mode.",
+            }
         tool_step = self.sink.step("tool", f"Tool: {tool_name}", json.dumps(tool_args, indent=2))
         self.sink.emit(
             {
@@ -753,5 +782,6 @@ async def run_tool_calling_async(
         executor=executor,
         sink=sink,
         max_steps=int(payload.get("max_tool_rounds") or 8),
+        mode=_normalise_mode(payload.get("mode")),
     )
     return await agent.run(payload, check=check, resume_state=resume_state, save_state=save_state)

@@ -8,6 +8,7 @@ Blender Agent 是一个 Blender 插件，在 `http://localhost:6789` 启动本�
 
 - View3D 侧边栏面板控制服务器启停
 - 浏览器 UI 支持多对话、实时状态、工具时间线和 SSE 流式传输
+- 支持 `Ask` / `Agent` 模式：Ask 只暴露只读查询工具，Agent 暴露完整控制工具
 - 内置 OpenAI 兼容的工具调用运行时
 - 支持 Blender 主线程调度
 - 本地绑定，可选局域网暴露
@@ -34,7 +35,7 @@ ln -sfn "$PWD/blender_agent" "$HOME/Library/Application Support/Blender/5.1/scri
 ## API 端点
 
 - `GET /api/health` - 服务器健康检查
-- `GET /api/tools` - OpenAI 兼容工具模式
+- `GET /api/tools?mode=ask|agent` - 按模式返回 OpenAI 兼容工具模式
 - `POST /api/chat/stream` - 启动代理运行并流式传输 SSE 事件
 - `POST /api/runs` - 启动异步运行用于轮询客户端
 - `GET /api/runs/{id}` - 获取运行状态、步骤、事件和输出

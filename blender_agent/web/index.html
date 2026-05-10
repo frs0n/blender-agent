@@ -74,8 +74,11 @@
     }
     .input-wrapper { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, hsl(var(--background)) 50%, transparent); padding: 1rem; display: flex; justify-content: center; }
     .input-box { width: 100%; max-width: 48rem; position: relative; display: flex; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 1.5rem; background: hsl(var(--background)); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-    .input-box textarea { width: 100%; background: transparent; border: none; padding: 1rem 4.25rem 1rem 1.5rem; outline: none; resize: none; color: hsl(var(--foreground)); min-height: 56px; max-height: 200px; font-size: 0.95rem; }
+    .input-box textarea { width: 100%; background: transparent; border: none; padding: 1rem 9.25rem 1rem 1.5rem; outline: none; resize: none; color: hsl(var(--foreground)); min-height: 56px; max-height: 200px; font-size: 0.95rem; }
     .input-actions { position: absolute; right: 0.5rem; bottom: 0.5rem; display: flex; align-items: center; }
+    .mode-switch { display: inline-flex; align-items: center; gap: 2px; margin-right: 0.4rem; padding: 2px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted)); }
+    .mode-option { border: 0; border-radius: 999px; padding: 0.28rem 0.55rem; color: hsl(var(--muted-foreground)); font-size: 0.72rem; font-weight: 600; line-height: 1; cursor: pointer; transition: background 0.16s ease, color 0.16s ease; }
+    .mode-option.active { background: hsl(var(--background)); color: hsl(var(--foreground)); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
     .icon-btn { width: 2rem; height: 2rem; border-radius: 999px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: opacity 0.2s ease, background 0.2s ease; }
     .icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
     .primary-action { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
@@ -150,6 +153,10 @@
         <form id="form" class="input-box">
           <textarea id="prompt" rows="1" placeholder="Send a message..."></textarea>
           <div class="input-actions">
+            <div class="mode-switch" aria-label="Mode">
+              <button id="modeAsk" class="mode-option" type="button" title="Ask questions without modifying Blender">Ask</button>
+              <button id="modeAgent" class="mode-option" type="button" title="Use all tools to inspect and modify Blender">Agent</button>
+            </div>
             <button id="primaryAction" class="icon-btn primary-action" type="button" title="Send Message">
               <svg id="primaryActionSendIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               <svg id="primaryActionPauseIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
@@ -204,7 +211,8 @@
       isStreaming: false,
       pausePending: false,
       streamReader: null,
-      activeAssistantMessage: null
+      activeAssistantMessage: null,
+      mode: localStorage.getItem("blender-agent.mode") === "ask" ? "ask" : "agent"
     };
     var saveTimer = null;
     function uid() { return "s_" + Math.random().toString(36).slice(2) + Date.now().toString(36); }
@@ -447,9 +455,24 @@
       pauseIcon.style.display = active && !state.pausePending ? "" : "none";
       spinnerIcon.style.display = state.pausePending ? "" : "none";
     }
-    function render() { renderSessions(); renderChat(); renderOperations(); updatePrimaryAction(); save(); }
+    function renderMode() {
+      var ask = document.getElementById("modeAsk");
+      var agent = document.getElementById("modeAgent");
+      var prompt = document.getElementById("prompt");
+      ask.className = "mode-option" + (state.mode === "ask" ? " active" : "");
+      agent.className = "mode-option" + (state.mode === "agent" ? " active" : "");
+      prompt.placeholder = state.mode === "ask" ? "Ask about Blender..." : "Ask Agent to work in Blender...";
+    }
+    function setMode(mode) {
+      state.mode = mode === "ask" ? "ask" : "agent";
+      localStorage.setItem("blender-agent.mode", state.mode);
+      renderMode();
+    }
+    function render() { renderSessions(); renderChat(); renderOperations(); updatePrimaryAction(); renderMode(); save(); }
 
     document.getElementById("newSession").onclick = newSession;
+    document.getElementById("modeAsk").onclick = function() { setMode("ask"); };
+    document.getElementById("modeAgent").onclick = function() { setMode("agent"); };
     document.getElementById("toggleOperations").onclick = function() { document.getElementById("operationsSidebar").classList.toggle("closed"); };
     document.getElementById("closeOperations").onclick = function() { document.getElementById("operationsSidebar").classList.add("closed"); };
     document.getElementById("clearSession").onclick = function() {
@@ -639,7 +662,8 @@
           base_url: document.getElementById("baseUrl").value,
           api_key: document.getElementById("apiKey").value,
           model: document.getElementById("model").value,
-          max_tool_rounds: parseInt(document.getElementById("maxToolRounds").value) || 8
+          max_tool_rounds: parseInt(document.getElementById("maxToolRounds").value) || 8,
+          mode: state.mode
         }, assistantMessage);
       } catch (err) {
         assistantMessage.content = "Error: " + err.message;
