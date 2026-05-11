@@ -87,9 +87,9 @@
     .object-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .object-chip-remove { width: 1.1rem; height: 1.1rem; border: 0; border-radius: 999px; color: hsl(var(--muted-foreground)); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; background: transparent; }
     .object-chip-remove:hover { color: hsl(var(--foreground)); background: hsl(var(--background)); }
-    .object-picker { position: absolute; left: 0; bottom: calc(100% + 10px); width: min(23rem, calc(100vw - 2rem)); max-height: 22rem; display: flex; flex-direction: column; gap: 0.35rem; padding: 0.55rem; border: 1px solid hsl(var(--border)); border-radius: 0.85rem; background: hsl(var(--background)); box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24); z-index: 60; }
+    .object-picker { position: absolute; left: 0; bottom: calc(100% + 10px); width: min(23rem, calc(100vw - 2rem)); max-height: min(22rem, calc(100vh - 8rem)); display: flex; flex-direction: column; gap: 0.35rem; padding: 0.55rem; border: 1px solid hsl(var(--border)); border-radius: 0.85rem; background: hsl(var(--background)); box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24); z-index: 60; }
     .object-picker.hidden { display: none; }
-    .object-picker-list { display: flex; flex-direction: column; gap: 0.15rem; overflow-y: auto; min-height: 2rem; }
+    .object-picker-list { flex: 1; min-height: 2rem; display: flex; flex-direction: column; gap: 0.15rem; overflow-y: auto; overscroll-behavior: contain; }
     .object-picker-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2rem; padding: 0.38rem 0.45rem; border-radius: 0.45rem; color: hsl(var(--foreground)); cursor: pointer; text-align: left; }
     .object-picker-row:hover, .object-picker-row.selected { background: hsl(var(--muted)); }
     .object-picker-main { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
@@ -428,7 +428,7 @@
         list.innerHTML = '<div class="object-picker-empty">Loading scene objects...</div>';
         return;
       }
-      var matches = state.sceneObjects.slice(0, 120);
+      var matches = state.sceneObjects;
       if (!matches.length) {
         list.innerHTML = '<div class="object-picker-empty">No scene objects found.</div>';
         return;
