@@ -4,6 +4,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blender Agent</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -62,7 +63,22 @@
     .message-assistant { align-items: flex-start; }
     .bubble { max-width: 85%; padding: 0.75rem 1rem; border-radius: var(--radius); line-height: 1.5; font-size: 0.95rem; white-space: pre-wrap; }
     .bubble-user { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-bottom-right-radius: 0.5rem; }
-    .bubble-assistant { background: transparent; color: hsl(var(--foreground)); padding: 0; font-size: 1rem; }
+    .bubble-assistant { background: transparent; color: hsl(var(--foreground)); padding: 0; font-size: 1rem; white-space: normal; }
+    .bubble-assistant h1 { font-size: 1.5rem; font-weight: 600; margin: 1rem 0 0.5rem 0; }
+    .bubble-assistant h2 { font-size: 1.25rem; font-weight: 600; margin: 0.875rem 0 0.5rem 0; }
+    .bubble-assistant h3 { font-size: 1.125rem; font-weight: 600; margin: 0.75rem 0 0.375rem 0; }
+    .bubble-assistant h4, .bubble-assistant h5, .bubble-assistant h6 { font-size: 1rem; font-weight: 600; margin: 0.625rem 0 0.25rem 0; }
+    .bubble-assistant p { margin: 0.5rem 0; }
+    .bubble-assistant ul, .bubble-assistant ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+    .bubble-assistant li { margin: 0.25rem 0; }
+    .bubble-assistant code { background: hsl(var(--muted)); padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875rem; font-family: monospace; }
+    .bubble-assistant pre { background: hsl(var(--muted)); padding: 0.75rem; border-radius: 0.5rem; margin: 0.5rem 0; overflow-x: auto; }
+    .bubble-assistant pre code { background: transparent; padding: 0; font-size: 0.875rem; }
+    .bubble-assistant a { color: hsl(var(--primary)); text-decoration: underline; }
+    .bubble-assistant a:hover { opacity: 0.8; }
+    .bubble-assistant strong { font-weight: 600; }
+    .bubble-assistant em { font-style: italic; }
+    .bubble-assistant blockquote { border-left: 3px solid hsl(var(--border)); padding-left: 0.75rem; margin: 0.5rem 0; color: hsl(var(--muted-foreground)); }
     .assistant-thinking { display: inline-flex; align-items: center; margin-top: 0.5rem; color: hsl(var(--muted-foreground)); }
     .thinking-dots { display: inline-flex; align-items: center; gap: 0.25rem; }
     .thinking-dots span { width: 0.375rem; height: 0.375rem; border-radius: 999px; background: currentColor; animation: pulseDots 1.2s infinite ease-in-out; }
@@ -542,7 +558,7 @@
         } else {
           var html = "";
           if (m.content) {
-            html += '<div class="bubble bubble-assistant">' + escapeHtml(m.content) + '</div>';
+            html += '<div class="bubble bubble-assistant">' + marked.parse(m.content) + '</div>';
           }
           if (m._retrying) {
             html += '<div class="assistant-thinking">Retrying...</div>';
