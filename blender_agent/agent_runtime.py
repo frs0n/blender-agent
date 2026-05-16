@@ -91,6 +91,7 @@ class ActionStep:
 class ChatCompletion:
     content: str
     tool_calls: list[ToolCall]
+    reasoning_content: str = ""
     finish_reason: str | None = None
 
 
@@ -220,8 +221,23 @@ def normalise_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for msg in messages:
         role = msg.get("role")
         content = msg.get("content")
-        if role in {"user", "assistant"} and content:
+        if role == "user" and content:
             normalised.append({"role": role, "content": content})
+            continue
+        if role == "assistant":
+            assistant_message: dict[str, Any] = {"role": role, "content": content or ""}
+            if msg.get("reasoning_content") is not None:
+                assistant_message["reasoning_content"] = msg.get("reasoning_content") or ""
+            tool_calls = msg.get("tool_calls")
+            if isinstance(tool_calls, list) and tool_calls:
+                assistant_message["tool_calls"] = tool_calls
+            if assistant_message["content"] or assistant_message.get("tool_calls"):
+                normalised.append(assistant_message)
+            continue
+        if role == "tool" and content:
+            tool_call_id = msg.get("tool_call_id")
+            if tool_call_id:
+                normalised.append({"role": role, "tool_call_id": tool_call_id, "content": content})
     return normalised
 
 
@@ -336,8 +352,8 @@ def _system_prompt(mode: str) -> str:
         mode_prompt = (
             "\n## Ask Mode\n"
             "- You are in Ask mode. Answer Blender questions and inspect/read scene or documentation when helpful.\n"
-            "- Do not modify the Blender scene, data-blocks, files, UI state, or render outputs.\n"
-            "- If the user asks you to create, edit, delete, align, snap, render to a path, or execute code, explain that Agent mode is required.\n"
+            "- Do not modify the Blender scene, data-blocks, files, or UI state.\n"
+            "- If the user asks you to create, edit, delete, align, snap, or execute code, explain that Agent mode is required.\n"
         )
     else:
         mode_prompt = (
@@ -467,6 +483,7 @@ def _parse_arguments(raw_arguments: Any) -> Any:
 
 def _choice_message_to_completion(message: dict[str, Any], finish_reason: str | None = None) -> ChatCompletion:
     content = message.get("content") or ""
+    reasoning_content = message.get("reasoning_content") or ""
     tool_calls = []
     for index, raw_call in enumerate(message.get("tool_calls") or []):
         function = raw_call.get("function") or {}
@@ -477,7 +494,12 @@ def _choice_message_to_completion(message: dict[str, Any], finish_reason: str | 
                 id=raw_call.get("id") or f"call_{index}",
             )
         )
-    return ChatCompletion(content=content, tool_calls=tool_calls, finish_reason=finish_reason)
+    return ChatCompletion(
+        content=content,
+        tool_calls=tool_calls,
+        reasoning_content=reasoning_content,
+        finish_reason=finish_reason,
+    )
 
 
 def _merge_tool_call_deltas(existing: dict[int, dict[str, Any]], deltas: list[dict[str, Any]]) -> None:
@@ -497,6 +519,7 @@ def _merge_tool_call_deltas(existing: dict[int, dict[str, Any]], deltas: list[di
 
 def _stream_events_to_completion(events: list[dict[str, Any]]) -> ChatCompletion:
     content = ""
+    reasoning_content = ""
     tool_calls_by_index: dict[int, dict[str, Any]] = {}
     finish_reason = None
     for event in events:
@@ -508,6 +531,8 @@ def _stream_events_to_completion(events: list[dict[str, Any]]) -> ChatCompletion
         delta = choice.get("delta") or {}
         if delta.get("content"):
             content += delta["content"]
+        if delta.get("reasoning_content"):
+            reasoning_content += delta["reasoning_content"]
         if delta.get("tool_calls"):
             _merge_tool_call_deltas(tool_calls_by_index, delta["tool_calls"])
 
@@ -522,7 +547,12 @@ def _stream_events_to_completion(events: list[dict[str, Any]]) -> ChatCompletion
                 id=raw_call.get("id") or f"call_{index}",
             )
         )
-    return ChatCompletion(content=content, tool_calls=tool_calls, finish_reason=finish_reason)
+    return ChatCompletion(
+        content=content,
+        tool_calls=tool_calls,
+        reasoning_content=reasoning_content,
+        finish_reason=finish_reason,
+    )
 
 
 class OpenAICompatibleModel:
@@ -664,6 +694,7 @@ class ToolCallingAgent:
                     {
                         "role": "assistant",
                         "content": completion.content or "",
+                        "reasoning_content": completion.reasoning_content or "",
                         "tool_calls": [tool_call.to_message_tool_call() for tool_call in completion.tool_calls],
                     }
                 )
@@ -674,6 +705,13 @@ class ToolCallingAgent:
                     action_step.is_final_answer = True
                     break
             else:
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": completion.content or "",
+                        "reasoning_content": completion.reasoning_content or "",
+                    }
+                )
                 final_answer = completion.content
                 action_step.ended_at = time.time()
                 action_step.is_final_answer = True

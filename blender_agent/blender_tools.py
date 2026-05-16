@@ -512,14 +512,6 @@ def jump_to_view3d_object_data_by_name(name: str, allow_edits: bool = False) -> 
     return _run_official_toolcode("jump_to_view3d_object_data_by_name", {"name": name, "allow_edits": allow_edits})
 
 
-def render_viewport_to_path(output_path: str) -> dict[str, Any]:
-    return _run_official_toolcode("render_viewport_to_path", {"output_path": output_path})
-
-
-def render_thumbnail_to_path(output_path: str) -> dict[str, Any]:
-    return _run_official_toolcode("render_thumbnail_to_path", {"output_path": output_path})
-
-
 def get_screenshot_of_window_as_json() -> dict[str, Any]:
     return _run_official_toolcode("get_screenshot_of_window_as_json")
 
@@ -596,8 +588,6 @@ HANDLERS: dict[str, ToolHandler] = {
     "jump_to_tab_by_space_type": jump_to_tab_by_space_type,
     "jump_to_view3d_object_by_name": jump_to_view3d_object_by_name,
     "jump_to_view3d_object_data_by_name": jump_to_view3d_object_data_by_name,
-    "render_viewport_to_path": render_viewport_to_path,
-    "render_thumbnail_to_path": render_thumbnail_to_path,
 }
 
 
@@ -653,8 +643,6 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
     _tool("jump_to_tab_by_space_type", "Switch to a workspace whose main area matches space_type.", {"space_type": _STRING, "allow_edits": _BOOL}, ["space_type"]),
     _tool("jump_to_view3d_object_by_name", "Move the 3D viewport to focus on an object by name.", {"name": _STRING, "allow_edits": _BOOL}, ["name"]),
     _tool("jump_to_view3d_object_data_by_name", "Move the 3D viewport to the object whose data-block name matches name (e.g. mesh data name, not object name).", {"name": _STRING, "allow_edits": _BOOL}, ["name"]),
-    _tool("render_viewport_to_path", "Render the current scene to output_path using current render settings.", {"output_path": _STRING}, ["output_path"]),
-    _tool("render_thumbnail_to_path", "Render a small, low-quality thumbnail to output_path.", {"output_path": _STRING}, ["output_path"]),
 ]
 
 ASK_TOOL_NAMES = {
