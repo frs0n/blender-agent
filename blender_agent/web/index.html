@@ -382,9 +382,7 @@
 
     function escapeHtml(t) { var d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
     function isImageTool(name) {
-      return name === "get_viewport_screenshot" ||
-        name === "render_scene_image" ||
-        name === "get_screenshot_of_window_as_image" ||
+      return name === "get_screenshot_of_window_as_image" ||
         name === "get_screenshot_of_area_as_image";
     }
     function sceneObjectByName(name) {
@@ -781,7 +779,7 @@
               tc.duration = tc._startedAt ? ((Date.now() - tc._startedAt) / 1000).toFixed(1) : null;
               var shot = event.result && event.result.result;
               if (isImageTool(event.tool_name) && shot && shot.preview_data_url) {
-                var label = event.tool_name === "render_scene_image" ? "Render captured" : "Screenshot captured";
+                var label = "Screenshot captured";
                 var method = shot.capture_method || "screenshot";
                 tc.detail = label + " (" + (shot.preview_width || shot.width) + "x" + (shot.preview_height || shot.height) + ", " + method + ")";
                 tc.image = shot.preview_data_url;

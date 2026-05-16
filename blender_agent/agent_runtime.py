@@ -271,8 +271,6 @@ def client_tool_result(result: dict[str, Any]) -> dict[str, Any]:
 
 def _tool_result_visual_message(tool_name: str, result: dict[str, Any]) -> dict[str, Any] | None:
     image_tools = {
-        "get_viewport_screenshot",
-        "render_scene_image",
         "get_screenshot_of_window_as_image",
         "get_screenshot_of_area_as_image",
     }
@@ -285,7 +283,7 @@ def _tool_result_visual_message(tool_name: str, result: dict[str, Any]) -> dict[
     width = screenshot.get("model_width") or screenshot.get("width")
     height = screenshot.get("model_height") or screenshot.get("height")
     method = screenshot.get("capture_method") or "screenshot"
-    label = "Blender render attached" if tool_name == "render_scene_image" else "Blender viewport screenshot attached"
+    label = "Blender screenshot attached"
     return {
         "role": "user",
         "_generated_visual_input": True,
@@ -345,7 +343,7 @@ def _system_prompt(mode: str) -> str:
         mode_prompt = (
             "\n## Agent Mode\n"
             "- You are in Agent mode. You may inspect and modify Blender using the provided tools.\n"
-            "- After every meaningful action (creating, moving, modifying, deleting objects, etc.), call `get_viewport_screenshot` to visually verify the result.\n"
+            "- After every meaningful action (creating, moving, modifying, deleting objects, etc.), call `get_screenshot_of_area_as_image` with `area_ui_type` set to `VIEW_3D` to visually verify the result.\n"
             "- Before calling `final_answer`, take a final screenshot to confirm the goal has been achieved.\n"
         )
     return (
@@ -354,7 +352,7 @@ def _system_prompt(mode: str) -> str:
         + "\n## Tool Calling Runtime\n"
         + "- You are running in a ReAct-style tool-calling loop: action, observation, repeat.\n"
         + "- Always call a tool when scene state or Blender changes are needed.\n"
-        + "- After every scene-modifying step, call get_viewport_screenshot and visually inspect the result before continuing.\n"
+        + "- After every scene-modifying step, call get_screenshot_of_area_as_image with area_ui_type=VIEW_3D and visually inspect the result before continuing.\n"
         + "- When the task is complete, take a final screenshot, then call final_answer with a short summary for the user.\n"
         + "- Do not call final_answer together with any other tool in the same model turn.\n"
     )
