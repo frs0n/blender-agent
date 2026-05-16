@@ -9,9 +9,7 @@ from __future__ import annotations
 import io
 import json
 import base64
-import os
 import re
-import subprocess
 import traceback
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -154,78 +152,6 @@ def execute_blender_code(code: str) -> dict[str, Any]:
     if stderr_text:
         result["stderr"] = stderr_text
     return result
-
-
-def execute_blender_code_for_cli(blend_file: str, code: str) -> dict[str, Any]:
-    """Execute code in a background Blender process using only stdlib subprocess."""
-    blend_path = Path(blend_file).expanduser()
-    if not blend_path.exists():
-        raise ValueError(f"Blend file not found: {blend_file}")
-
-    marker = "__BLENDER_AGENT_CLI_RESULT__"
-    script = (
-        "import json, traceback\n"
-        "result = {}\n"
-        "try:\n"
-        f"    exec({code!r}, globals())\n"
-        "    payload = {'status': 'ok', 'result': result}\n"
-        "except Exception as exc:\n"
-        "    payload = {'status': 'error', 'message': str(exc), 'traceback': traceback.format_exc()}\n"
-        f"print({marker!r} + json.dumps(payload, default=repr))\n"
-    )
-
-    script_file = tempfile.NamedTemporaryFile("w", suffix=".py", prefix="blender_agent_cli_", delete=False, encoding="utf-8")
-    try:
-        script_file.write(script)
-        script_file.close()
-        completed = subprocess.run(
-            [bpy.app.binary_path, "--background", str(blend_path), "--python", script_file.name],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-    finally:
-        try:
-            os.remove(script_file.name)
-        except OSError:
-            pass
-
-    payload_line = next((line[len(marker):] for line in reversed(completed.stdout.splitlines()) if line.startswith(marker)), None)
-    if payload_line is None:
-        return {
-            "status": "error",
-            "message": "Background Blender run did not return a result payload",
-            "returncode": completed.returncode,
-            "stdout": completed.stdout[-4000:],
-            "stderr": completed.stderr[-4000:],
-        }
-
-    payload = json.loads(payload_line)
-    payload["returncode"] = completed.returncode
-    if completed.stderr:
-        payload["stderr"] = completed.stderr[-4000:]
-    return payload
-
-
-def _run_official_toolcode_for_cli(tool_name: str, blend_file: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    toolcode_path = OFFICIAL_TOOLS_ROOT / f"{tool_name}_toolcode.py"
-    if not toolcode_path.exists():
-        raise ValueError(f"Official toolcode not found: {tool_name}")
-
-    namespace: dict[str, Any] = {"__file__": str(toolcode_path), "__name__": f"_blmcp_cli_{tool_name}"}
-    exec(_toolcode_expand_includes(toolcode_path), namespace)
-    params_type = namespace.get("Params")
-    call_params = None if params_type is None else params_type(**(params or {}))
-    code = _toolcode_expand_includes(toolcode_path) + (
-        "\n\n"
-        "params = "
-        + repr(call_params)
-        + "\nresult = main(params)\n"
-        "if callable(result):\n"
-        "    result = result()\n"
-    )
-    return execute_blender_code_for_cli(blend_file, code)
 
 
 def _iter_doc_paths(scope: str) -> list[Path]:
@@ -460,40 +386,20 @@ def get_blendfile_summary_path_info() -> dict[str, Any]:
     return _run_official_toolcode("get_blendfile_summary_path_info")
 
 
-def get_blendfile_summary_path_info_for_cli(blend_file: str) -> dict[str, Any]:
-    return _run_official_toolcode_for_cli("get_blendfile_summary_path_info", blend_file)
-
-
 def get_blendfile_summary_datablocks() -> dict[str, Any]:
     return _run_official_toolcode("get_blendfile_summary_datablocks")
-
-
-def get_blendfile_summary_datablocks_for_cli(blend_file: str) -> dict[str, Any]:
-    return _run_official_toolcode_for_cli("get_blendfile_summary_datablocks", blend_file)
 
 
 def get_blendfile_summary_missing_files() -> dict[str, Any]:
     return _run_official_toolcode("get_blendfile_summary_missing_files")
 
 
-def get_blendfile_summary_missing_files_for_cli(blend_file: str) -> dict[str, Any]:
-    return _run_official_toolcode_for_cli("get_blendfile_summary_missing_files", blend_file)
-
-
 def get_blendfile_summary_of_linked_libraries() -> dict[str, Any]:
     return _run_official_toolcode("get_blendfile_summary_of_linked_libraries")
 
 
-def get_blendfile_summary_of_linked_libraries_for_cli(blend_file: str) -> dict[str, Any]:
-    return _run_official_toolcode_for_cli("get_blendfile_summary_of_linked_libraries", blend_file)
-
-
 def get_blendfile_summary_usage_guess() -> dict[str, Any]:
     return _run_official_toolcode("get_blendfile_summary_usage_guess")
-
-
-def get_blendfile_summary_usage_guess_for_cli(blend_file: str) -> dict[str, Any]:
-    return _run_official_toolcode_for_cli("get_blendfile_summary_usage_guess", blend_file)
 
 
 def jump_to_tab_by_name(name: str) -> dict[str, Any]:
@@ -564,17 +470,11 @@ def dispatch_command(command: dict[str, Any]) -> dict[str, Any]:
 
 HANDLERS: dict[str, ToolHandler] = {
     "execute_blender_code": execute_blender_code,
-    "execute_blender_code_for_cli": execute_blender_code_for_cli,
     "get_blendfile_summary_path_info": get_blendfile_summary_path_info,
-    "get_blendfile_summary_path_info_for_cli": get_blendfile_summary_path_info_for_cli,
     "get_blendfile_summary_datablocks": get_blendfile_summary_datablocks,
-    "get_blendfile_summary_datablocks_for_cli": get_blendfile_summary_datablocks_for_cli,
     "get_blendfile_summary_missing_files": get_blendfile_summary_missing_files,
-    "get_blendfile_summary_missing_files_for_cli": get_blendfile_summary_missing_files_for_cli,
     "get_blendfile_summary_of_linked_libraries": get_blendfile_summary_of_linked_libraries,
-    "get_blendfile_summary_of_linked_libraries_for_cli": get_blendfile_summary_of_linked_libraries_for_cli,
     "get_blendfile_summary_usage_guess": get_blendfile_summary_usage_guess,
-    "get_blendfile_summary_usage_guess_for_cli": get_blendfile_summary_usage_guess_for_cli,
     "get_objects_summary": get_objects_summary,
     "get_object_detail_summary": get_object_detail_summary,
     "get_python_api_docs": get_python_api_docs,
@@ -620,17 +520,11 @@ _DOC_SEARCH_PARAMS = {
 
 OPENAI_TOOLS: list[dict[str, Any]] = [
     _tool("execute_blender_code", "Execute Python code in the active Blender session. Assign a JSON-serialisable dict to `result` to return data.", {"code": _STRING}, ["code"]),
-    _tool("execute_blender_code_for_cli", "Execute Python code in a background Blender process for a specific .blend file. The blend_file must be an absolute path. Assign a JSON-serialisable dict to `result` to return data.", {"blend_file": _STRING, "code": _STRING}, ["blend_file", "code"]),
     _tool("get_blendfile_summary_path_info", "Simple/fast access to the blend file's path, save status, age, and backups."),
-    _tool("get_blendfile_summary_path_info_for_cli", "Return path info by opening blend_file in background Blender.", {"blend_file": _STRING}, ["blend_file"]),
     _tool("get_blendfile_summary_datablocks", "Return a summary of data-block counts, active workspace, and render engine."),
-    _tool("get_blendfile_summary_datablocks_for_cli", "Return a data-block summary by opening blend_file in background Blender.", {"blend_file": _STRING}, ["blend_file"]),
     _tool("get_blendfile_summary_missing_files", "Report external file references that are missing from disk."),
-    _tool("get_blendfile_summary_missing_files_for_cli", "Report missing file references by opening blend_file in background Blender.", {"blend_file": _STRING}, ["blend_file"]),
     _tool("get_blendfile_summary_of_linked_libraries", "Return a tree of directly and indirectly linked library files."),
-    _tool("get_blendfile_summary_of_linked_libraries_for_cli", "Return linked-library info by opening blend_file in background Blender.", {"blend_file": _STRING}, ["blend_file"]),
     _tool("get_blendfile_summary_usage_guess", "Guess the primary use-cases of the current blend file, scored 0-100 with certainty."),
-    _tool("get_blendfile_summary_usage_guess_for_cli", "Guess use-cases by opening blend_file in background Blender.", {"blend_file": _STRING}, ["blend_file"]),
     _tool("get_objects_summary", "Return the scene's collection hierarchy and objects: name, type, parent, data name, selection, and visibility."),
     _tool("get_object_detail_summary", "Return a structured summary of the object identified by name.", {"name": _STRING}, ["name"]),
     _tool("get_python_api_docs", "Return bundled Blender Python API docs for an identifier. Supports dotted names (e.g. bpy.ops.mesh.primitive_cube_add) - searches inside parent RST files for specific definitions.", {"identifier": _STRING}, ["identifier"]),
@@ -647,15 +541,10 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
 
 ASK_TOOL_NAMES = {
     "get_blendfile_summary_path_info",
-    "get_blendfile_summary_path_info_for_cli",
     "get_blendfile_summary_datablocks",
-    "get_blendfile_summary_datablocks_for_cli",
     "get_blendfile_summary_missing_files",
-    "get_blendfile_summary_missing_files_for_cli",
     "get_blendfile_summary_of_linked_libraries",
-    "get_blendfile_summary_of_linked_libraries_for_cli",
     "get_blendfile_summary_usage_guess",
-    "get_blendfile_summary_usage_guess_for_cli",
     "get_objects_summary",
     "get_object_detail_summary",
     "get_python_api_docs",

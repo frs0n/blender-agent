@@ -13,7 +13,6 @@ from blmcp.tools_helpers import (
     toolcode_load_from_filepath,
     toolcode_wrap_with_calling_convention,
 )
-from blmcp.tools_helpers.blender_cli import run_blender_cli, synced_blend_for_cli
 from blmcp.tools_helpers.connection import send_code
 from mcp.server.fastmcp import FastMCP  # pylint: disable=import-error,no-name-in-module
 from mcp.types import ToolAnnotations  # pylint: disable=import-error,no-name-in-module
@@ -34,16 +33,3 @@ def register(mcp: FastMCP) -> None:
         (images, libraries, fonts, sounds, movie clips, caches, sequences).
         """
         return send_code(toolcode_format_call(_TOOL_CALL, None), strict_json=True)
-
-    @mcp.tool(
-        annotations=ToolAnnotations(
-            title="Get Blend-File Missing Files Summary for Command-Line",
-            readOnlyHint=True,
-        )
-    )
-    def get_blendfile_summary_missing_files_for_cli(blend_file: str) -> dict[str, object]:
-        """
-        Report missing file references by opening *blend_file* in background Blender.
-        """
-        with synced_blend_for_cli(blend_file) as synced_path:
-            return run_blender_cli(synced_path, toolcode_format_call(_TOOL_CALL, None))
