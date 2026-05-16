@@ -9,8 +9,13 @@ from __future__ import annotations
 import io
 import json
 import base64
+import difflib
+import os
 import re
+import sys
 import traceback
+import importlib.util
+import types
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Callable
@@ -154,143 +159,118 @@ def execute_blender_code(code: str) -> dict[str, Any]:
     return result
 
 
-def _iter_doc_paths(scope: str) -> list[Path]:
-    root = OFFICIAL_DATA_ROOT / scope
-    if not root.exists():
-        return []
-    return sorted(root.rglob("*.rst"))
+def _official_rst_search(
+    query: str,
+    scope: str,
+    max_results: int = 20,
+    context: int = 0,
+    index: int | None = None,
+) -> dict[str, Any]:
+    """Dispatch doc search to the vendored official Blender MCP implementation."""
+    blmcp_root = OFFICIAL_MCP_ROOT
+    helpers_root = blmcp_root / "tools_helpers"
+
+    if "blmcp" not in sys.modules:
+        pkg = types.ModuleType("blmcp")
+        pkg.__path__ = [str(blmcp_root)]  # type: ignore[attr-defined]
+        sys.modules["blmcp"] = pkg
+    if "blmcp.tools_helpers" not in sys.modules:
+        pkg = types.ModuleType("blmcp.tools_helpers")
+        pkg.__path__ = [str(helpers_root)]  # type: ignore[attr-defined]
+        sys.modules["blmcp.tools_helpers"] = pkg
+
+    parse_name = "blmcp.tools_helpers.rst_parse_docs"
+    if parse_name not in sys.modules:
+        parse_spec = importlib.util.spec_from_file_location(
+            parse_name,
+            helpers_root / "rst_parse_docs.py",
+        )
+        if parse_spec is None or parse_spec.loader is None:
+            raise ImportError("Unable to load vendored rst_parse_docs.py")
+        parse_module = importlib.util.module_from_spec(parse_spec)
+        sys.modules[parse_name] = parse_module
+        try:
+            parse_spec.loader.exec_module(parse_module)
+        except ModuleNotFoundError as exc:
+            if exc.name == "docutils":
+                raise RuntimeError(
+                    "Official Blender MCP search requires the `docutils` package in Blender's Python environment."
+                ) from exc
+            raise
+
+    search_name = "blmcp.tools_helpers.rst_doc_search"
+    module = sys.modules.get(search_name)
+    if module is None:
+        search_spec = importlib.util.spec_from_file_location(
+            search_name,
+            helpers_root / "rst_doc_search.py",
+        )
+        if search_spec is None or search_spec.loader is None:
+            raise ImportError("Unable to load vendored rst_doc_search.py")
+        module = importlib.util.module_from_spec(search_spec)
+        sys.modules[search_name] = module
+        try:
+            search_spec.loader.exec_module(module)
+        except ModuleNotFoundError as exc:
+            if exc.name == "docutils":
+                raise RuntimeError(
+                    "Official Blender MCP search requires the `docutils` package in Blender's Python environment."
+                ) from exc
+            raise
+
+    return module.search(
+        query=query,
+        scope=scope,
+        max_results=max_results,
+        context=context,
+        index=index,
+    )
 
 
-def _doc_rel(path: Path) -> str:
-    return path.relative_to(OFFICIAL_DATA_ROOT).as_posix()
+def _official_rst_parse_module() -> Any:
+    """Load the vendored official rst_parse_docs helper module."""
+    blmcp_root = OFFICIAL_MCP_ROOT
+    helpers_root = blmcp_root / "tools_helpers"
 
+    if "blmcp" not in sys.modules:
+        pkg = types.ModuleType("blmcp")
+        pkg.__path__ = [str(blmcp_root)]  # type: ignore[attr-defined]
+        sys.modules["blmcp"] = pkg
+    if "blmcp.tools_helpers" not in sys.modules:
+        pkg = types.ModuleType("blmcp.tools_helpers")
+        pkg.__path__ = [str(helpers_root)]  # type: ignore[attr-defined]
+        sys.modules["blmcp.tools_helpers"] = pkg
 
-def _doc_paragraphs(text: str) -> list[str]:
-    return [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
-
-
-# RST directive names that define addressable API members.
-_DEFINITION_DIRECTIVES = (
-    "attribute", "class", "classmethod", "data", "decorator",
-    "exception", "function", "method", "property", "staticmethod",
-)
-_DEF_RE = re.compile(
-    r"^\s*\.\. (?:" + "|".join(_DEFINITION_DIRECTIVES) + r")::\s*(.+)$",
-    re.MULTILINE,
-)
-
-
-def _rst_list_definitions(text: str) -> list[str]:
-    names: list[str] = []
-    for m in _DEF_RE.finditer(text):
-        raw = m.group(1).strip()
-        name = raw.split("(", 1)[0].strip()
-        if name:
-            names.append(name)
-    return names
-
-
-def _rst_find_definition(text: str, name: str) -> str | None:
-    lines = text.split("\n")
-    name_lower = name.lower()
-    for i, line in enumerate(lines):
-        m = _DEF_RE.match(line)
-        if not m:
-            continue
-        sig_name = m.group(1).strip().split("(", 1)[0].strip()
-        if sig_name.lower() != name_lower:
-            continue
-        block_start = i
-        block_end = i + 1
-        while block_end < len(lines):
-            ln = lines[block_end]
-            if not ln.strip():
-                block_end += 1
-                continue
-            if _DEF_RE.match(ln):
-                break
-            if ln[0] in (" ", "\t"):
-                block_end += 1
-                continue
-            block_end += 1
-        while block_end > block_start and not lines[block_end - 1].strip():
-            block_end -= 1
-        return "\n".join(lines[block_start:block_end])
-    return None
-
-
-def _list_direct_children(api_root: Path, identifier: str) -> list[str]:
-    prefix = identifier + "."
-    expected_dot = prefix.count(".")
-    children: list[str] = []
-    for entry in api_root.iterdir():
-        if not entry.name.endswith(".rst") or not entry.name.startswith(prefix):
-            continue
-        stem = entry.name[:-4]
-        if stem.count(".") != expected_dot:
-            continue
-        children.append(stem)
-    children.sort()
-    return children
-
-
-def _list_identifiers_containing(api_root: Path, identifier: str) -> list[str]:
-    buckets: list[set[tuple[str, ...]]] = []
-    for entry in api_root.iterdir():
-        if not entry.name.endswith(".rst"):
-            continue
-        parts = tuple(entry.name[:-4].split("."))
-        if identifier not in parts:
-            continue
-        while len(buckets) <= len(parts):
-            buckets.append(set())
-        buckets[len(parts)].add(parts)
-    for depth in range(len(buckets) - 1, 1, -1):
-        buckets[depth] = {
-            t for t in buckets[depth]
-            if not any(t[:k] in buckets[k] for k in range(1, depth))
-        }
-    return sorted(".".join(t) for bucket in buckets for t in bucket)
-
-
-def _extract_signature(paragraph: str) -> str:
-    for line in paragraph.split("\n"):
-        if _DEF_RE.match(line):
-            return line.strip()
-    return ""
+    parse_name = "blmcp.tools_helpers.rst_parse_docs"
+    module = sys.modules.get(parse_name)
+    if module is None:
+        parse_spec = importlib.util.spec_from_file_location(
+            parse_name,
+            helpers_root / "rst_parse_docs.py",
+        )
+        if parse_spec is None or parse_spec.loader is None:
+            raise ImportError("Unable to load vendored rst_parse_docs.py")
+        module = importlib.util.module_from_spec(parse_spec)
+        sys.modules[parse_name] = module
+        try:
+            parse_spec.loader.exec_module(module)
+        except ModuleNotFoundError as exc:
+            if exc.name == "docutils":
+                raise RuntimeError(
+                    "Official Blender MCP docs tools require the `docutils` package in Blender's Python environment."
+                ) from exc
+            raise
+    return module
 
 
 def _search_docs(scope: str, query: str, max_results: int = 20, context: int = 0, index: int | None = None) -> dict[str, Any]:
-    tokens = [token.lower() for token in re.split(r"\s+", query.strip()) if token.strip()]
-    if not tokens:
-        return {"query": query, "scope": scope, "hits": [], "truncated": False}
-
-    hits: list[dict[str, Any]] = []
-    for path in _iter_doc_paths(scope):
-        rel = _doc_rel(path)
-        text = path.read_text(encoding="utf-8", errors="replace")
-        paragraphs = _doc_paragraphs(text)
-        for paragraph_index, paragraph in enumerate(paragraphs):
-            haystack = f"{rel}\n{paragraph}".lower()
-            if not all(token in haystack for token in tokens):
-                continue
-            score = sum(haystack.count(token) for token in tokens)
-            start = max(0, paragraph_index - max(0, context))
-            end = min(len(paragraphs), paragraph_index + max(0, context) + 1)
-            hits.append({
-                "path": rel,
-                "text": "\n\n".join(paragraphs[start:end]),
-                "breadcrumb": "",
-                "index": len(hits),
-                "score": score,
-            })
-    hits.sort(key=lambda item: item["score"], reverse=True)
-    for idx, hit in enumerate(hits):
-        hit["index"] = idx
-    if index is not None:
-        hits = [hits[index]] if 0 <= index < len(hits) else []
-    truncated = len(hits) > max_results
-    return {"query": query, "scope": scope, "hits": hits[:max_results], "truncated": truncated}
+    return _official_rst_search(
+        query=query,
+        scope=scope,
+        max_results=max_results,
+        context=context,
+        index=index,
+    )
 
 
 def search_api_docs(query: str, max_results: int = 20, context: int = 0, index: int | None = None) -> dict[str, Any]:
@@ -301,77 +281,261 @@ def search_manual_docs(query: str, max_results: int = 20, context: int = 0, inde
     return _search_docs("manual", query, max_results, context, index)
 
 
-def get_python_api_docs(identifier: str) -> dict[str, Any]:
-    api_root = OFFICIAL_DATA_ROOT / "api"
-    api_resolved = api_root.resolve()
-    safe = identifier.strip().strip("/").removesuffix(".rst")
-    _SUMMARY_THRESHOLD = 32 * 1024
+_DOC_EXT = ".rst"
+_SUMMARY_CHAR_THRESHOLD = 32 * 1024
+_LITERALINCLUDE_PREFIX = ".. literalinclude::"
+_LINES_OPTION_PREFIX = ":lines:"
 
-    def _resolve(stem: str) -> Path | None:
-        p = (api_root / f"{stem}.rst").resolve()
-        if not str(p).startswith(str(api_resolved)) or not p.exists():
+
+def _line_bounds_from_index(content: str, index: int) -> tuple[int, int]:
+    beg = content.rfind("\n", 0, index) + 1
+    end = content.find("\n", index)
+    if end == -1:
+        end = len(content)
+    return beg, end
+
+
+def _resolve_inside(api_path: str, stem: str) -> str | None:
+    candidate = os.path.join(api_path, f"{stem}{_DOC_EXT}")
+    candidate_path = os.path.realpath(candidate)
+    if not candidate_path.startswith(api_path + os.sep):
+        return None
+    if not os.path.isfile(candidate_path):
+        return None
+    return candidate_path
+
+
+def _list_direct_child_identifiers(api_path: str, identifier: str) -> list[str]:
+    prefix = identifier + "."
+    expected_dot_count = prefix.count(".")
+    children: list[str] = []
+    for name in os.listdir(api_path):
+        if not name.endswith(_DOC_EXT) or not name.startswith(prefix):
+            continue
+        stem = name[:-len(_DOC_EXT)]
+        if stem.count(".") != expected_dot_count:
+            continue
+        children.append(stem)
+    children.sort()
+    return children
+
+
+def _list_identifiers_containing_component(api_path: str, identifier: str) -> list[str]:
+    buckets: list[set[tuple[str, ...]]] = []
+    for name in os.listdir(api_path):
+        if not name.endswith(_DOC_EXT):
+            continue
+        parts = tuple(name[:-len(_DOC_EXT)].split("."))
+        if identifier not in parts:
+            continue
+        while len(buckets) <= len(parts):
+            buckets.append(set())
+        buckets[len(parts)].add(parts)
+
+    for depth in range(len(buckets) - 1, 1, -1):
+        buckets[depth] = {
+            t for t in buckets[depth]
+            if not any(t[:k] in buckets[k] for k in range(1, depth))
+        }
+
+    return sorted(".".join(t) for bucket in buckets for t in bucket)
+
+
+def _summarize_rst_for_size(identifier: str, path: str, size: int, parse_module: Any) -> str:
+    defs = parse_module.list_doctree_definitions(parse_module.doctree_for_path(path))
+    header = (
+        "File too large to inline ({:d} KB, threshold {:d} KB); "
+        "definitions listed below. Query individual members as "
+        "`{:s}.<name>`:\n\n"
+    ).format(size // 1024, _SUMMARY_CHAR_THRESHOLD // 1024, identifier)
+    if not defs:
+        return header + "(no top-level definitions found)"
+    return header + "\n".join(f"- {d}" for d in defs)
+
+
+def _list_top_level_modules(api_path: str) -> list[str]:
+    names = os.listdir(api_path)
+    rst_names = {name for name in names if name.endswith(_DOC_EXT)}
+    firsts = sorted({n[:-len(_DOC_EXT)].split(".", 1)[0] for n in rst_names})
+    modules: list[str] = []
+    for first in firsts:
+        prefix = first + "."
+        root_rst = first + _DOC_EXT
+        if any(name != root_rst and name.startswith(prefix) for name in rst_names):
+            modules.append(first)
+            continue
+        if root_rst not in rst_names:
+            continue
+        root_path = os.path.join(api_path, root_rst)
+        with open(root_path, encoding="utf-8", errors="replace") as fh:
+            head = fh.read(4096)
+        if head.startswith(".. module::") or "\n.. module::" in head:
+            modules.append(first)
+    return modules
+
+
+def _filter_submodules_by_tail(submodules: list[str], tail: str) -> list[str]:
+    tail_chars = set(tail)
+    keep = [s for s in submodules if tail_chars.issubset(s.rsplit(".", 1)[-1])]
+    keep.sort(
+        key=lambda candidate: (
+            -difflib.SequenceMatcher(a=tail, b=candidate.rsplit(".", 1)[-1]).ratio(),
+            candidate,
+        ),
+    )
+    return keep
+
+
+def _lines_option_after(content: str, start: int) -> str | None:
+    pos = start
+    while pos < len(content):
+        line_end = content.find("\n", pos)
+        if line_end == -1:
+            line_end = len(content)
+        stripped = content[pos:line_end].lstrip()
+        if not stripped or not stripped.startswith(":"):
             return None
-        return p
+        if stripped.startswith(_LINES_OPTION_PREFIX):
+            return stripped[len(_LINES_OPTION_PREFIX):].strip()
+        pos = line_end + 1
+    return None
 
-    def _read_file(p: Path, stem: str) -> dict[str, Any]:
-        text = p.read_text(encoding="utf-8", errors="replace")
-        if len(text) <= _SUMMARY_THRESHOLD:
-            return {"kind": "exact", "found": True, "identifier": safe, "path": _doc_rel(p), "text": text}
-        definition = None
-        parts = safe.split(".")
-        for strip_count in range(1, len(parts)):
-            tail = ".".join(parts[-strip_count:])
-            hit = _rst_find_definition(text, tail)
-            if hit is not None:
-                definition = hit
-                break
-        if definition is not None:
-            return {"kind": "definition", "found": True, "identifier": safe, "path": _doc_rel(p), "text": definition}
-        defs = _rst_list_definitions(text)
-        summary = (
-            f"File too large to inline ({len(text) // 1024} KB, threshold {_SUMMARY_THRESHOLD // 1024} KB); "
-            f"definitions listed below. Query individual members as `{stem}.<name>`:\n\n"
-            + "\n".join(f"- {d}" for d in defs[:300])
-        )
-        return {"kind": "exact", "found": True, "identifier": safe, "path": _doc_rel(p), "text": summary}
 
-    # 1. Exact file match.
-    if (exact := _resolve(safe)) is not None:
-        return _read_file(exact, safe)
+def _apply_lines_spec(text: str, spec: str) -> str:
+    source = text.splitlines(keepends=True)
+    total = len(source)
+    out: list[str] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        lo, sep, hi = part.partition("-")
+        try:
+            lo_i = int(lo) if lo else 1
+            hi_i = int(hi) if hi else total
+        except ValueError:
+            continue
+        if not sep:
+            hi_i = lo_i
+        out.extend(source[max(0, lo_i - 1):hi_i])
+    return "".join(out)
 
-    # 2. Intra-file definition lookup: strip trailing components to find
-    #    parent RST, then search for the definition inside it.
-    parts = safe.split(".")
+
+def _collect_examples(content: str, api_path: str) -> list[dict[str, str]]:
+    examples: list[dict[str, str]] = []
+    seen: set[tuple[str, str | None]] = set()
+    pos = 0
+    while (index := content.find(_LITERALINCLUDE_PREFIX, pos)) != -1:
+        beg, end = _line_bounds_from_index(content, index)
+        pos = end + 1
+        if content[beg:index].strip():
+            continue
+        tokens = content[index + len(_LITERALINCLUDE_PREFIX):end].split()
+        if not tokens:
+            continue
+        filepath_rel = tokens[0].removeprefix("./")
+        lines_spec = _lines_option_after(content, end + 1)
+        target_path = os.path.realpath(os.path.join(api_path, filepath_rel))
+        if not target_path.startswith(api_path + os.sep):
+            continue
+        dedup_key = (target_path, lines_spec)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        try:
+            with open(target_path, encoding="utf-8", errors="replace") as fh:
+                example_content = fh.read()
+        except OSError:
+            continue
+        if lines_spec is not None:
+            example_content = _apply_lines_spec(example_content, lines_spec)
+        examples.append({"path": filepath_rel, "content": example_content})
+    return examples
+
+
+def get_python_api_docs(identifier: str) -> dict[str, Any]:
+    parse_module = _official_rst_parse_module()
+    api_path = os.path.realpath(os.path.join(parse_module.data_dir(), "api"))
+    identifier = identifier.strip()
+
+    if identifier == "*" or identifier.endswith(".*"):
+        if identifier == "*":
+            submodules = _list_top_level_modules(api_path)
+        else:
+            submodules = _list_direct_child_identifiers(api_path, identifier[:-2])
+        return {
+            "kind": "namespace",
+            "found": True,
+            "identifier": identifier,
+            "submodules": submodules,
+        }
+
+    if (candidate_path := _resolve_inside(api_path, identifier)) is not None:
+        with open(candidate_path, encoding="utf-8", errors="replace") as fh:
+            content = fh.read()
+        if len(content) > _SUMMARY_CHAR_THRESHOLD:
+            return {
+                "kind": "exact",
+                "found": True,
+                "identifier": identifier,
+                "content": _summarize_rst_for_size(
+                    identifier, candidate_path, len(content), parse_module,
+                ),
+                "examples": [],
+            }
+        return {
+            "kind": "exact",
+            "found": True,
+            "identifier": identifier,
+            "content": content,
+            "examples": _collect_examples(content, api_path),
+        }
+
+    if (submodules := _list_direct_child_identifiers(api_path, identifier)):
+        return {
+            "kind": "namespace",
+            "found": True,
+            "identifier": identifier,
+            "submodules": submodules,
+        }
+
+    parts = identifier.split(".")
     for strip_count in range(1, len(parts)):
         prefix = ".".join(parts[:-strip_count])
         tail = ".".join(parts[-strip_count:])
-        parent = _resolve(prefix)
-        if parent is None:
+        prefix_path = _resolve_inside(api_path, prefix)
+        if prefix_path is None:
             continue
-        text = parent.read_text(encoding="utf-8", errors="replace")
-        hit = _rst_find_definition(text, tail)
-        if hit is not None:
-            return {"kind": "definition", "found": True, "identifier": safe, "path": _doc_rel(parent), "text": hit}
-        defs = _rst_list_definitions(text)
-        children = _list_direct_children(api_root, prefix)
-        tail_chars = set(tail.lower())
-        similar = [c for c in children if tail_chars.issubset(c.rsplit(".", 1)[-1].lower())]
+        doctree = parse_module.doctree_for_path(prefix_path)
+        rendered = parse_module.find_definition_in_doctree(doctree, tail)
+        if rendered:
+            return {
+                "kind": "definition",
+                "found": True,
+                "identifier": identifier,
+                "content": rendered,
+                "examples": _collect_examples(rendered, api_path),
+            }
         return {
-            "kind": "partial", "found": False, "identifier": safe,
-            "parent": prefix, "available": defs, "submodules": similar[:50],
+            "kind": "partial",
+            "found": False,
+            "identifier": identifier,
+            "parent": prefix,
+            "available": parse_module.list_doctree_definitions(doctree),
+            "submodules": _filter_submodules_by_tail(
+                _list_direct_child_identifiers(api_path, prefix), tail,
+            ),
         }
 
-    # 3. Namespace: `<identifier>.<child>.rst` files exist.
-    children = _list_direct_children(api_root, safe)
-    if children:
-        return {"kind": "namespace", "found": True, "identifier": safe, "submodules": children}
+    if (suggestions := _list_identifiers_containing_component(api_path, identifier)):
+        return {
+            "kind": "suggestions",
+            "found": False,
+            "identifier": identifier,
+            "suggestions": suggestions,
+        }
 
-    # 4. "Did you mean" fallback.
-    suggestions = _list_identifiers_containing(api_root, safe)
-    if suggestions:
-        return {"kind": "suggestions", "found": False, "identifier": safe, "suggestions": suggestions[:50]}
-
-    return {"kind": "missing", "found": False, "identifier": safe}
+    return {"kind": "missing", "found": False, "identifier": identifier}
 
 
 def get_objects_summary() -> dict[str, Any]:
@@ -527,7 +691,7 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
     _tool("get_blendfile_summary_usage_guess", "Guess the primary use-cases of the current blend file, scored 0-100 with certainty."),
     _tool("get_objects_summary", "Return the scene's collection hierarchy and objects: name, type, parent, data name, selection, and visibility."),
     _tool("get_object_detail_summary", "Return a structured summary of the object identified by name.", {"name": _STRING}, ["name"]),
-    _tool("get_python_api_docs", "Return bundled Blender Python API docs for an identifier. Supports dotted names (e.g. bpy.ops.mesh.primitive_cube_add) - searches inside parent RST files for specific definitions.", {"identifier": _STRING}, ["identifier"]),
+    _tool("get_python_api_docs", "Return bundled Blender Python API docs for an identifier, or list modules for `*` / `X.*`. Supports exact files, intra-file definitions, namespaces, suggestions, and bundled `literalinclude` examples.", {"identifier": _STRING}, ["identifier"]),
     _tool("search_api_docs", "Full-text search over bundled Blender Python API RST docs.", _DOC_SEARCH_PARAMS, ["query"]),
     _tool("search_manual_docs", "Full-text search over bundled Blender Manual RST docs.", _DOC_SEARCH_PARAMS, ["query"]),
     _tool("get_screenshot_of_window_as_json", "Return a JSON description of the Blender window layout, areas, active object, and selection."),

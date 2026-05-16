@@ -12,6 +12,9 @@ blender_version_min = "5.1.0"
 license = ["SPDX:GPL-3.0-or-later"]
 copyright = ["2026 frs0n", "2026 Blender Authors"]
 platforms = ["linux-x64", "macos-arm64", "macos-x64", "windows-x64"]
+wheels = [
+  "./wheels/docutils-0.22.4-py3-none-any.whl",
+]
 
 [permissions]
 network = "Connect to model APIs and local UI"
